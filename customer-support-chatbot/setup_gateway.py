@@ -8,13 +8,13 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
-bedrock = boto3.client("bedrock-agentcore", region_name="us-east-1")
+bedrock = boto3.client("bedrock-agentcore-control", region_name="us-east-1")
 sts = boto3.client("sts", region_name="us-east-1")
 cf = boto3.client("cloudformation", region_name="us-east-1")
 
 GATEWAY_NAME = "customer-support-gateway"
 TARGET_NAME = "bugreports"
-LAMBDA_NAME = "customer-support-create-bug-report"
+LAMBDA_NAME = "bug-report-tool-stack-create-bug-report"
 
 
 def get_gateway_role_arn():
@@ -45,8 +45,10 @@ def create_gateway(role_arn):
     """Create AgentCore Gateway."""
     try:
         gateway = bedrock.create_gateway(
-            gatewayName=GATEWAY_NAME,
+            name=GATEWAY_NAME,
             roleArn=role_arn,
+            protocolType="MCP",
+            authorizerType="NONE",
             description="Gateway for customer support tools"
         )
         gateway_id = gateway["gatewayId"]
@@ -54,7 +56,7 @@ def create_gateway(role_arn):
     except Exception as e:
         if "already exists" in str(e).lower():
             gateways = bedrock.list_gateways()
-            gateway_id = next(g["gatewayId"] for g in gateways.get("items", []) if g["gatewayName"] == GATEWAY_NAME)
+            gateway_id = next(g["gatewayId"] for g in gateways.get("items", []) if g["name"] == GATEWAY_NAME)
             print(f"Gateway already exists: {gateway_id}")
         else:
             raise
@@ -91,12 +93,22 @@ def create_target(gateway_id, lambda_arn):
 
     try:
         bedrock.create_gateway_target(
-            gatewayId=gateway_id,
-            targetName=TARGET_NAME,
-            targetDescription="Bug report creation tool",
-            targetUri=lambda_arn,
-            protocolType="MCP",
-            toolSchema=tool_schema
+            gatewayIdentifier=gateway_id,
+            name=TARGET_NAME,
+            description="Bug report creation tool",
+            targetConfiguration={
+                "mcp": {
+                    "lambda": {
+                        "lambdaArn": lambda_arn,
+                        "toolSchema": {
+                            "inlinePayload": tool_schema
+                        }
+                    }
+                }
+            },
+            credentialProviderConfigurations=[
+                {"credentialProviderType": "GATEWAY_IAM_ROLE"}
+            ]
         )
         print(f"Created target: {TARGET_NAME}")
     except Exception as e:

@@ -9,12 +9,12 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
-bedrock = boto3.client("bedrock-agentcore", region_name="us-east-1")
+bedrock = boto3.client("bedrock-agentcore-control", region_name="us-east-1")
 iam = boto3.client("iam", region_name="us-east-1")
 sts = boto3.client("sts", region_name="us-east-1")
 
 MODEL_ID = "us.amazon.nova-pro-v1:0"
-HARNESS_NAME = "customer-support-chatbot"
+HARNESS_NAME = "customer_support_chatbot"
 TOOL_NAME = "create_bug_report"
 
 
@@ -41,31 +41,34 @@ def get_harness_role_arn():
     return None
 
 
+def get_gateway_arn():
+    """Get the gateway ARN."""
+    try:
+        gateways = bedrock.list_gateways()
+        for g in gateways.get("items", []):
+            if g["name"] == "customer-support-gateway":
+                return f"arn:aws:bedrock-agentcore:us-east-1:{sts.get_caller_identity()['Account']}:gateway/{g['gatewayId']}"
+    except Exception as e:
+        print(f"Error getting gateway ARN: {e}")
+    return None
+
+
 def create_harness(role_arn, system_prompt):
     """Create or update the AgentCore harness."""
+    gateway_arn = get_gateway_arn()
+    if not gateway_arn:
+        print("Error: Could not find gateway. Run setup_gateway.py first.")
+        return None, None
+
     tool_schema = [
         {
-            "toolSpec": {
-                "name": TOOL_NAME,
-                "description": "Creates a bug report ticket in the system. Use this when the customer has provided all required bug report details: description, steps to reproduce, and environment.",
-                "inputSchema": {
-                    "json": {
-                        "type": "object",
-                        "properties": {
-                            "description": {
-                                "type": "string",
-                                "description": "Description of the bug or issue the customer reported"
-                            },
-                            "stepsToReproduce": {
-                                "type": "string",
-                                "description": "Steps the customer took to reproduce the issue"
-                            },
-                            "environment": {
-                                "type": "string",
-                                "description": "Customer's environment: browser, device, OS, app version"
-                            }
-                        },
-                        "required": ["description", "stepsToReproduce", "environment"]
+            "type": "agentcore_gateway",
+            "name": "bugreports",
+            "config": {
+                "agentCoreGateway": {
+                    "gatewayArn": gateway_arn,
+                    "outboundAuth": {
+                        "awsIam": {}
                     }
                 }
             }
@@ -74,32 +77,33 @@ def create_harness(role_arn, system_prompt):
 
     try:
         # Try to delete existing harness first
-        harnesses = bedrock.list_agent_runtimes()
-        for h in harnesses.get("items", []):
-            if h["name"] == HARNESS_NAME:
+        harnesses = bedrock.list_harnesses()
+        for h in harnesses.get("harnesses", []):
+            if h["harnessName"] == HARNESS_NAME:
                 try:
-                    bedrock.delete_agent_runtime(agentRuntimeId=h["agentRuntimeId"])
-                    print(f"Deleted existing harness: {h['agentRuntimeId']}")
+                    bedrock.delete_harness(harnessId=h["harnessId"])
+                    print(f"Deleted existing harness: {h['harnessId']}")
                     time.sleep(5)
                 except:
                     pass
 
         # Create new harness
-        harness = bedrock.create_agent_runtime(
-            name=HARNESS_NAME,
-            description="Customer support chatbot with bug reporting and FAQ",
-            modelId=MODEL_ID,
-            instructionPrompt=system_prompt,
-            tools=tool_schema,
-            roleArn=role_arn,
-            inferenceConfig={
-                "temperature": 0.1,
-                "topK": 1
+        harness = bedrock.create_harness(
+            harnessName=HARNESS_NAME,
+            executionRoleArn=role_arn,
+            model={
+                "bedrockModelConfig": {
+                    "modelId": MODEL_ID,
+                    "temperature": 0.1,
+                    "topP": 0.9
+                }
             },
+            systemPrompt=[{"text": system_prompt}],
+            tools=tool_schema,
             memory={"disabled": {}}
         )
-        harness_id = harness["agentRuntimeId"]
-        harness_arn = harness.get("agentRuntimeArn", f"arn:aws:bedrock-agentcore:us-east-1:{sts.get_caller_identity()['Account']}:agent-runtime/{harness_id}")
+        harness_id = harness["harness"]["harnessId"]
+        harness_arn = harness["harness"]["arn"]
         print(f"Created harness: {harness_id}")
     except Exception as e:
         print(f"Error creating harness: {e}")
@@ -107,7 +111,7 @@ def create_harness(role_arn, system_prompt):
 
     print("Waiting for harness to reach READY status...")
     for i in range(30):
-        status = bedrock.get_agent_runtime(agentRuntimeId=harness_id)
+        status = bedrock.get_harness(harnessId=harness_id)["harness"]
         if status.get("status") == "READY":
             print(f"Harness is READY")
             break

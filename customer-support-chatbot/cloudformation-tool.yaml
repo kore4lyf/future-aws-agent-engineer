@@ -5,7 +5,7 @@ Resources:
   BugReportsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub "${AWS::StackName}-bug-reports"
+      TableName: bug-report-tool-stack-bug-reports
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: ticketId
@@ -17,7 +17,7 @@ Resources:
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "${AWS::StackName}-lambda-role"
+      RoleName: bug-report-tool-stack-lambda-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -41,7 +41,7 @@ Resources:
   GatewayRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "${AWS::StackName}-gateway-role"
+      RoleName: bug-report-tool-stack-gateway-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -61,7 +61,7 @@ Resources:
   HarnessExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "${AWS::StackName}-harness-role"
+      RoleName: bug-report-tool-stack-harness-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -73,7 +73,7 @@ Resources:
   CreateBugReportFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub "${AWS::StackName}-create-bug-report"
+      FunctionName: bug-report-tool-stack-create-bug-report
       Runtime: python3.11
       Handler: lambda_function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
@@ -84,15 +84,14 @@ Resources:
           import boto3
           import json
           import uuid
+          import os
           from datetime import datetime
 
           dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
-          table_name = "${BUG_REPORTS_TABLE}"
+          table_name = os.environ["BUG_REPORTS_TABLE"]
           table = dynamodb.Table(table_name)
 
-
           def lambda_handler(event, context):
-              """Create a bug report in DynamoDB."""
               try:
                   description = event.get("description", "")
                   steps_to_reproduce = event.get("stepsToReproduce", "")
@@ -122,8 +121,9 @@ Resources:
                       "status": "error",
                       "message": f"Failed to create bug report: {str(e)}"
                   }
-      Variables:
-        BUG_REPORTS_TABLE: !Ref BugReportsTable
+      Environment:
+        Variables:
+          BUG_REPORTS_TABLE: !Ref BugReportsTable
 
 Outputs:
   BugReportsTableName:

@@ -7,7 +7,7 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
-bedrock = boto3.client("bedrock-agentcore", region_name="us-east-1")
+bedrock = boto3.client("bedrock-agentcore-control", region_name="us-east-1")
 iam = boto3.client("iam", region_name="us-east-1")
 
 GATEWAY_NAME = "customer-support-gateway"
@@ -20,11 +20,11 @@ def cleanup():
 
     # Delete harness
     try:
-        harnesses = bedrock.list_agent_runtimes()
+        harnesses = bedrock.list_harnesses()
         for h in harnesses.get("items", []):
             if h["name"] == HARNESS_NAME:
-                bedrock.delete_agent_runtime(agentRuntimeId=h["agentRuntimeId"])
-                print(f"Deleted harness: {h['agentRuntimeId']}")
+                bedrock.delete_harness(harnessId=h["harnessId"])
+                print(f"Deleted harness: {h['harnessId']}")
     except Exception as e:
         print(f"Harness cleanup note: {e}")
 
@@ -32,7 +32,7 @@ def cleanup():
     try:
         gateways = bedrock.list_gateways()
         for g in gateways.get("items", []):
-            if g["gatewayName"] == GATEWAY_NAME:
+            if g["name"] == GATEWAY_NAME:
                 bedrock.delete_gateway(gatewayId=g["gatewayId"])
                 print(f"Deleted gateway: {g['gatewayId']}")
     except Exception as e:

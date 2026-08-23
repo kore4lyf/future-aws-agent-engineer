@@ -1,0 +1,19 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Customer Support Chatbot - Test
+
+Resources:
+  BugReportsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: bug-report-tool-stack-bug-reports
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: ticketId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ticketId
+          KeyType: HASH
+
+Outputs:
+  BugReportsTableName:
+    Value: !Ref BugReportsTable
