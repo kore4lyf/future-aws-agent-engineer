@@ -13,7 +13,7 @@ sts = boto3.client("sts", region_name="us-east-1")
 cf = boto3.client("cloudformation", region_name="us-east-1")
 
 GATEWAY_NAME = "customer-support-gateway"
-TARGET_NAME = "bug_report"
+TARGET_NAME = "bugreports"
 LAMBDA_NAME = "customer-support-create-bug-report"
 
 
@@ -71,24 +71,20 @@ def create_target(gateway_id, lambda_arn):
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "bug_description": {
+                    "description": {
                         "type": "string",
                         "description": "Description of the bug or issue the customer reported"
                     },
-                    "steps_to_reproduce": {
+                    "stepsToReproduce": {
                         "type": "string",
                         "description": "Steps the customer took to reproduce the issue"
                     },
                     "environment": {
                         "type": "string",
                         "description": "Customer's environment: browser, device, OS, app version"
-                    },
-                    "customer_id": {
-                        "type": "string",
-                        "description": "Customer identifier if available"
                     }
                 },
-                "required": ["bug_description", "steps_to_reproduce", "environment"]
+                "required": ["description", "stepsToReproduce", "environment"]
             }
         }
     ]

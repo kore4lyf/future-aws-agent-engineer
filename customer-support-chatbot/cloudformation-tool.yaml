@@ -2,24 +2,22 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: Customer Support Chatbot - Lambda, DynamoDB, and IAM Roles
 
 Resources:
-  # DynamoDB Table for Bug Reports
   BugReportsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: customer-support-bugs
+      TableName: !Sub "${AWS::StackName}-bug-reports"
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: ticket_id
+        - AttributeName: ticketId
           AttributeType: S
       KeySchema:
-        - AttributeName: ticket_id
+        - AttributeName: ticketId
           KeyType: HASH
 
-  # Lambda Execution Role
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: customer-support-lambda-role
+      RoleName: !Sub "${AWS::StackName}-lambda-role"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -40,11 +38,10 @@ Resources:
                   - dynamodb:GetItem
                 Resource: !GetAtt BugReportsTable.Arn
 
-  # Gateway Role
   GatewayRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: customer-support-gateway-role
+      RoleName: !Sub "${AWS::StackName}-gateway-role"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -59,13 +56,12 @@ Resources:
             Statement:
               - Effect: Allow
                 Action: lambda:InvokeFunction
-                Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:customer-support-create-bug-report"
+                Resource: !GetAtt CreateBugReportFunction.Arn
 
-  # Harness Execution Role
   HarnessExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: customer-support-harness-role
+      RoleName: !Sub "${AWS::StackName}-harness-role"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -74,11 +70,10 @@ Resources:
               Service: bedrock-agentcore.amazonaws.com
             Action: sts:AssumeRole
 
-  # Lambda Function
   CreateBugReportFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: customer-support-create-bug-report
+      FunctionName: !Sub "${AWS::StackName}-create-bug-report"
       Runtime: python3.11
       Handler: lambda_function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
@@ -92,39 +87,33 @@ Resources:
           from datetime import datetime
 
           dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
-          table_name = "customer-support-bugs"
+          table_name = "${BUG_REPORTS_TABLE}"
           table = dynamodb.Table(table_name)
 
 
           def lambda_handler(event, context):
               """Create a bug report in DynamoDB."""
               try:
-                  # Extract tool input
-                  bug_description = event.get("bug_description", "")
-                  steps_to_reproduce = event.get("steps_to_reproduce", "")
+                  description = event.get("description", "")
+                  steps_to_reproduce = event.get("stepsToReproduce", "")
                   environment = event.get("environment", "")
-                  customer_id = event.get("customer_id", "anonymous")
 
-                  # Generate ticket ID
                   ticket_id = f"BUG-{uuid.uuid4().hex[:8].upper()}"
 
-                  # Create item
                   item = {
-                      "ticket_id": ticket_id,
-                      "bug_description": bug_description,
-                      "steps_to_reproduce": steps_to_reproduce,
+                      "ticketId": ticket_id,
+                      "description": description,
+                      "stepsToReproduce": steps_to_reproduce,
                       "environment": environment,
-                      "customer_id": customer_id,
-                      "status": "open",
-                      "created_at": datetime.utcnow().isoformat()
+                      "status": "OPEN",
+                      "createdAt": datetime.utcnow().isoformat()
                   }
 
-                  # Put item in DynamoDB
                   table.put_item(Item=item)
 
                   return {
-                      "ticket_id": ticket_id,
-                      "status": "created",
+                      "ticketId": ticket_id,
+                      "status": "OPEN",
                       "message": f"Bug report {ticket_id} has been filed successfully."
                   }
 
@@ -133,6 +122,8 @@ Resources:
                       "status": "error",
                       "message": f"Failed to create bug report: {str(e)}"
                   }
+      Variables:
+        BUG_REPORTS_TABLE: !Ref BugReportsTable
 
 Outputs:
   BugReportsTableName:

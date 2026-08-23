@@ -20,7 +20,11 @@ TOOL_NAME = "create_bug_report"
 
 def load_system_prompt():
     with open("system_prompt.txt", "r") as f:
-        return f.read()
+        prompt = f.read()
+    with open("online_shop_faq.md", "r") as f:
+        faq = f.read()
+    prompt = prompt.replace("{{FAQ}}", faq)
+    return prompt
 
 
 def get_gateway_role_arn():
@@ -48,24 +52,20 @@ def create_harness(role_arn, system_prompt):
                     "json": {
                         "type": "object",
                         "properties": {
-                            "bug_description": {
+                            "description": {
                                 "type": "string",
                                 "description": "Description of the bug or issue the customer reported"
                             },
-                            "steps_to_reproduce": {
+                            "stepsToReproduce": {
                                 "type": "string",
                                 "description": "Steps the customer took to reproduce the issue"
                             },
                             "environment": {
                                 "type": "string",
                                 "description": "Customer's environment: browser, device, OS, app version"
-                            },
-                            "customer_id": {
-                                "type": "string",
-                                "description": "Customer identifier if available"
                             }
                         },
-                        "required": ["bug_description", "steps_to_reproduce", "environment"]
+                        "required": ["description", "stepsToReproduce", "environment"]
                     }
                 }
             }
