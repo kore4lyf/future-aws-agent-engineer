@@ -27,14 +27,14 @@ def load_system_prompt():
     return prompt
 
 
-def get_gateway_role_arn():
-    """Get the gateway role ARN from CloudFormation outputs."""
+def get_harness_role_arn():
+    """Get the harness execution role ARN from CloudFormation outputs."""
     cf = boto3.client("cloudformation", region_name="us-east-1")
     try:
         response = cf.describe_stacks(StackName="bug-report-tool-stack")
         outputs = response["Stacks"][0].get("Outputs", [])
         for output in outputs:
-            if output["OutputKey"] == "GatewayRoleArn":
+            if output["OutputKey"] == "HarnessExecutionRoleArn":
                 return output["OutputValue"]
     except Exception as e:
         print(f"Error getting stack outputs: {e}")
@@ -131,10 +131,10 @@ def main():
     system_prompt = load_system_prompt()
     print(f"   Loaded {len(system_prompt)} characters\n")
 
-    print("2. Getting gateway role ARN...")
-    role_arn = get_gateway_role_arn()
+    print("2. Getting harness role ARN...")
+    role_arn = get_harness_role_arn()
     if not role_arn:
-        print("Error: Could not get gateway role ARN. Run setup_gateway.py first.")
+        print("Error: Could not get harness execution role ARN. Run cloudformation deploy first.")
         return
     print(f"   Role ARN: {role_arn}\n")
 
