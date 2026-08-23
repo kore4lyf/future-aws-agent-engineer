@@ -22,3 +22,21 @@
 - All transactions are encrypted and secure.
 - For payment issues, contact your bank first, then reach out to us.
 - Promotional codes must be applied at checkout — they cannot be added later.
+
+## Products
+- Product availability is shown in real-time on each product page.
+- Size guides are available for clothing and footwear items.
+- To check warranty information, visit the product page or contact support.
+- Product images are for illustration only; actual colors may vary slightly.
+
+## Account
+- To reset your password, click "Forgot Password" on the login page.
+- You can update your email or phone number in Account Settings.
+- To delete your account, contact support — this action is permanent.
+- Order history is available in your account dashboard under "My Orders."
+
+## Privacy
+- Your personal data is encrypted and never shared with third parties.
+- We use cookies to improve your shopping experience.
+- You can request a copy of your data by contacting support.
+- To unsubscribe from emails, click "Unsubscribe" at the bottom of any marketing email.

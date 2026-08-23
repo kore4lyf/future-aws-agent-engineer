@@ -42,7 +42,7 @@ pip install -r requirements.txt
 # 2. Deploy CloudFormation stack
 aws cloudformation deploy \
   --template-file cloudformation-tool.yaml \
-  --stack-name customer-support-tools \
+  --stack-name bug-report-tool-stack \
   --capabilities CAPABILITY_NAMED_IAM \
   --region us-east-1
 
@@ -102,4 +102,21 @@ Assistant: Standard shipping takes 3-5 business days. Express shipping is 1-2 bu
 ```
 You: Can you help me with my homework?
 Assistant: I'm here to help with bug reports or platform questions (orders, shipping, returns, payments). For other inquiries, I can connect you with human support. Would you like me to do that?
+```
+
+## Evaluation
+
+Run evaluation tests:
+```bash
+# Generate evaluation dataset
+python generate-eval-dataset.py
+
+# Deploy testing stack
+aws cloudformation deploy \
+  --template-file cloudformation-testing.yaml \
+  --stack-name customer-support-eval \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region us-east-1
+
+# Upload to S3 and run Bedrock Evaluation
 ```

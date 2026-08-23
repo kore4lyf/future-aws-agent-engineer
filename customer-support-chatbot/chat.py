@@ -14,10 +14,11 @@ bedrock = boto3.client("bedrock-agentcore", region_name="us-east-1")
 
 def load_harness_arn():
     try:
-        with open("harness_arn.txt", "r") as f:
-            return f.read().strip()
+        with open("agentcore_config.json", "r") as f:
+            config = json.load(f)
+            return config.get("harness_arn")
     except FileNotFoundError:
-        print("Error: harness_arn.txt not found. Run create_harness.py first.")
+        print("Error: agentcore_config.json not found. Run create_harness.py first.")
         sys.exit(1)
 
 

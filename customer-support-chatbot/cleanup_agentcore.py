@@ -38,10 +38,10 @@ def cleanup():
     except Exception as e:
         print(f"Gateway cleanup note: {e}")
 
-    # Remove harness_arn.txt
-    if os.path.exists("harness_arn.txt"):
-        os.remove("harness_arn.txt")
-        print("Removed harness_arn.txt")
+    # Remove agentcore_config.json
+    if os.path.exists("agentcore_config.json"):
+        os.remove("agentcore_config.json")
+        print("Removed agentcore_config.json")
 
     print("\n=== Cleanup Complete ===")
     print("Note: CloudFormation stack and Lambda function were not deleted.")

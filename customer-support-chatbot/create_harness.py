@@ -13,7 +13,7 @@ bedrock = boto3.client("bedrock-agentcore", region_name="us-east-1")
 iam = boto3.client("iam", region_name="us-east-1")
 sts = boto3.client("sts", region_name="us-east-1")
 
-MODEL_ID = "amazon.nova-pro-v1:0"
+MODEL_ID = "us.amazon.nova-pro-v1:0"
 HARNESS_NAME = "customer-support-chatbot"
 TOOL_NAME = "create_bug_report"
 
@@ -27,7 +27,7 @@ def get_gateway_role_arn():
     """Get the gateway role ARN from CloudFormation outputs."""
     cf = boto3.client("cloudformation", region_name="us-east-1")
     try:
-        response = cf.describe_stacks(StackName="customer-support-tools")
+        response = cf.describe_stacks(StackName="bug-report-tool-stack")
         outputs = response["Stacks"][0].get("Outputs", [])
         for output in outputs:
             if output["OutputKey"] == "GatewayRoleArn":
@@ -117,9 +117,9 @@ def create_harness(role_arn, system_prompt):
         print("Harness did not reach READY in time")
 
     # Save harness ARN
-    with open("harness_arn.txt", "w") as f:
-        f.write(harness_arn)
-    print(f"Saved harness ARN to harness_arn.txt")
+    with open("agentcore_config.json", "w") as f:
+        json.dump({"harness_arn": harness_arn, "harness_id": harness_id}, f, indent=2)
+    print(f"Saved harness config to agentcore_config.json")
 
     return harness_id, harness_arn
 

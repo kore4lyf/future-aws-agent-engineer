@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Customer Support Chatbot - Evaluation Resources (S3 bucket + IAM role)
+
+Resources:
+  # S3 Bucket for evaluation datasets
+  EvalBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "customer-support-eval-${AWS::AccountId}"
+
+  # IAM Role for Bedrock Evaluations
+  EvalRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: customer-support-eval-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: s3-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt EvalBucket.Arn
+                  - !Sub "${EvalBucket.Arn}/*"
+
+Outputs:
+  BucketName:
+    Value: !Ref EvalBucket
+    Description: S3 bucket for evaluation datasets
+  RoleArn:
+    Value: !GetAtt EvalRole.Arn
+    Description: IAM role for Bedrock Evaluations

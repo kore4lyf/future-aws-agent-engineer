@@ -20,7 +20,7 @@ LAMBDA_NAME = "customer-support-create-bug-report"
 def get_gateway_role_arn():
     """Get the gateway role ARN from CloudFormation outputs."""
     try:
-        response = cf.describe_stacks(StackName="customer-support-tools")
+        response = cf.describe_stacks(StackName="bug-report-tool-stack")
         outputs = response["Stacks"][0].get("Outputs", [])
         for output in outputs:
             if output["OutputKey"] == "GatewayRoleArn":

@@ -1,0 +1,101 @@
+{
+  "test_suite": "customer-support-chatbot",
+  "tests": [
+    {
+      "name": "bug_report_basic",
+      "category": "bug_report",
+      "turns": [
+        {
+          "user": "The checkout page is broken",
+          "expected_behavior": "Ask for description of the problem"
+        },
+        {
+          "user": "It shows an error message when I click pay",
+          "expected_behavior": "Ask for steps to reproduce or environment"
+        },
+        {
+          "user": "I'm using Chrome on Windows 10",
+          "expected_behavior": "Ask for remaining missing information"
+        },
+        {
+          "user": "The error says 'Payment processing failed'",
+          "expected_behavior": "File bug report with create_bug_report tool"
+        }
+      ],
+      "expected_tool_call": "create_bug_report",
+      "reference_response": "Bug report filed successfully with ticket ID"
+    },
+    {
+      "name": "bug_report_complete",
+      "category": "bug_report",
+      "turns": [
+        {
+          "user": "Bug report: The login page shows a blank screen on Safari iOS 15. Steps to reproduce: open the app, tap login. Environment: iPhone 12, Safari, iOS 15.4",
+          "expected_behavior": "File bug report immediately with all details"
+        }
+      ],
+      "expected_tool_call": "create_bug_report",
+      "reference_response": "Bug report filed successfully with ticket ID"
+    },
+    {
+      "name": "platform_question_shipping",
+      "category": "platform_question",
+      "turns": [
+        {
+          "user": "How long does shipping take?",
+          "expected_behavior": "Answer from FAQ about shipping times"
+        }
+      ],
+      "expected_tool_call": null,
+      "reference_response": "Standard shipping takes 3-5 business days. Express shipping is 1-2 business days for an additional fee. Orders over $50 qualify for free shipping."
+    },
+    {
+      "name": "platform_question_returns",
+      "category": "platform_question",
+      "turns": [
+        {
+          "user": "Can I return an item I bought?",
+          "expected_behavior": "Answer from FAQ about return policy"
+        }
+      ],
+      "expected_tool_call": null,
+      "reference_response": "Returns are accepted within 30 days of delivery. Items must be unused and in original packaging. Refunds are processed within 5-7 business days."
+    },
+    {
+      "name": "platform_question_payments",
+      "category": "platform_question",
+      "turns": [
+        {
+          "user": "What payment methods do you accept?",
+          "expected_behavior": "Answer from FAQ about payment methods"
+        }
+      ],
+      "expected_tool_call": null,
+      "reference_response": "We accept Visa, Mastercard, American Express, PayPal, and Apple Pay."
+    },
+    {
+      "name": "other_request",
+      "category": "other",
+      "turns": [
+        {
+          "user": "Can you help me write a essay?",
+          "expected_behavior": "Politely redirect to human support"
+        }
+      ],
+      "expected_tool_call": null,
+      "reference_response": "I can help with bug reports or platform questions. For other inquiries, I can connect you with human support."
+    },
+    {
+      "name": "mixed_bug_and_question",
+      "category": "bug_report",
+      "turns": [
+        {
+          "user": "I can't checkout and also how do I return an item?",
+          "expected_behavior": "Address bug report first, then answer question"
+        }
+      ],
+      "expected_tool_call": "create_bug_report",
+      "reference_response": "Bug report filed. Returns are accepted within 30 days."
+    }
+  ]
+}
