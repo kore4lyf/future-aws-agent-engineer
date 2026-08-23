@@ -25,6 +25,14 @@ Takes informal meeting notes and produces:
 | `chaining-critique/email_classifier.py` | Classifier-then-specialist chain |
 | `chaining-critique/outreach_refiner.py` | Critique-and-refine loop |
 | `travel-planner/travel_planner.py` | Converse API with tools (exercise) |
+| `prompt-refinement/demo-1-prompt-template/prompt_template.md` | Prompt template with variables |
+| `prompt-refinement/demo-1-prompt-template/email_support.py` | Bedrock Prompt Management API |
+| `prompt-refinement/demo-2-guardrails/guardrail_config.md` | Guardrail configuration |
+| `prompt-refinement/demo-2-guardrails/guardrail_demo.py` | Bedrock Guardrails API |
+| `prompt-refinement/demo-3-evals/eval_documentation.md` | Eval metrics documentation |
+| `prompt-refinement/demo-3-evals/eval_runner.py` | Bedrock Evaluations API |
+| `prompt-refinement/faq-assistant-eval/faq_assistant.py` | FAQ Assistant eval script |
+| `prompt-refinement/faq-assistant-eval/template.yaml` | S3 bucket for eval results |
 | `requirements.txt` | Dependencies |
 
 ## Usage
@@ -53,6 +61,18 @@ python chaining-critique/outreach_refiner.py
 
 # Exercise: Travel Planner with Tools
 python travel-planner/travel_planner.py
+
+# Prompt Refinement: Bedrock Prompt Management
+python prompt-refinement/demo-1-prompt-template/email_support.py
+
+# Prompt Refinement: Bedrock Guardrails
+python prompt-refinement/demo-2-guardrails/guardrail_demo.py
+
+# Prompt Refinement: Bedrock Evaluations
+python prompt-refinement/demo-3-evals/eval_runner.py
+
+# Exercise: FAQ Assistant with Evaluation
+python prompt-refinement/faq-assistant-eval/faq_assistant.py
 ```
 
 ## API Calls

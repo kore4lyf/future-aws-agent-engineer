@@ -1,0 +1,13 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: S3 bucket for storing FAQ assistant eval results
+
+Resources:
+  EvalBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "faq-assistant-eval-${AWS::AccountId}"
+
+Outputs:
+  BucketName:
+    Value: !Ref EvalBucket
+    Description: Name of the S3 bucket for eval results
