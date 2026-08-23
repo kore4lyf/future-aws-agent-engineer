@@ -1,0 +1,39 @@
+{
+  "jobName": "support-chatbot-eval-run-1",
+  "roleArn": "arn:aws:iam::708026873259:role/customer-support-eval-role",
+  "evaluationConfig": {
+    "automated": {
+      "datasetMetricConfigs": [
+        {
+          "taskType": "General",
+          "dataset": {
+            "name": "support-chatbot-eval-dataset",
+            "datasetLocation": {
+              "s3Uri": "s3://customer-support-eval-708026873259/output_eval_dataset.jsonl"
+            }
+          },
+          "metricNames": ["Builtin.Correctness"]
+        }
+      ],
+      "evaluatorModelConfig": {
+        "bedrockEvaluatorModels": [
+          {
+            "modelIdentifier": "amazon.nova-pro-v1:0"
+          }
+        ]
+      }
+    }
+  },
+  "inferenceConfig": {
+    "models": [
+      {
+        "precomputedInferenceSource": {
+          "inferenceSourceIdentifier": "my-support-chatbot"
+        }
+      }
+    ]
+  },
+  "outputDataConfig": {
+    "s3Uri": "s3://customer-support-eval-708026873259/results/"
+  }
+}

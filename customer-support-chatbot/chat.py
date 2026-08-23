@@ -1,5 +1,6 @@
 import boto3
 import json
+import re
 import sys
 import uuid
 from dotenv import load_dotenv
@@ -36,11 +37,12 @@ def invoke_harness(harness_arn, session_id, user_message):
             if "contentBlockDelta" in event:
                 delta = event["contentBlockDelta"].get("delta", {})
                 if "text" in delta:
-                    text = delta["text"]
-                    if "<thinking>" not in text and "</thinking>" not in text:
-                        full_response.append(text)
+                    full_response.append(delta["text"])
 
-        return "".join(full_response)
+        # Join and remove thinking tags
+        text = "".join(full_response)
+        text = re.sub(r'<thinking>.*?</thinking>', '', text, flags=re.DOTALL)
+        return text.strip()
 
     except Exception as e:
         if "stream" in str(e).lower():

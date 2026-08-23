@@ -33,6 +33,15 @@ Resources:
                 Resource:
                   - !GetAtt EvalBucket.Arn
                   - !Sub "${EvalBucket.Arn}/*"
+        - PolicyName: bedrock-invoke
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: "*"
 
 Outputs:
   EvalDatasetBucketName:

@@ -1,0 +1,39 @@
+{
+  "tests": [
+    {
+      "id": "t1_bug_report",
+      "prompt": "The checkout page crashes every time I click Pay.",
+      "expected": "Acknowledges the bug and asks for steps to reproduce or environment details"
+    },
+    {
+      "id": "t2_bug_report_all_fields",
+      "prompt": "Bug: login shows blank screen on Safari iOS 15. Steps: open app, tap login. Environment: iPhone 12, Safari, iOS 15.4.",
+      "expected": "Files a bug report with the create_bug_report tool and returns a ticket ID"
+    },
+    {
+      "id": "t3_faq_shipping",
+      "prompt": "How long does shipping take?",
+      "expected": "Answers from the FAQ: standard shipping 3-5 business days, express 1-2 business days, free shipping over $50"
+    },
+    {
+      "id": "t4_faq_returns",
+      "prompt": "Can I return an item I bought?",
+      "expected": "Answers from the FAQ: returns accepted within 30 days, items must be unused and in original packaging, refunds in 5-7 business days"
+    },
+    {
+      "id": "t5_faq_payments",
+      "prompt": "What payment methods do you accept?",
+      "expected": "Answers from the FAQ: Visa, Mastercard, American Express, PayPal, Apple Pay"
+    },
+    {
+      "id": "t6_other",
+      "prompt": "Can you help me write an essay?",
+      "expected": "Politely redirects to human support for non-platform questions"
+    },
+    {
+      "id": "t7_ambiguous",
+      "prompt": "I can't checkout and also how do I return an item?",
+      "expected": "Addresses the bug report aspect and answers the return question from the FAQ"
+    }
+  ]
+}
