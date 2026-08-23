@@ -93,7 +93,7 @@ def create_harness(role_arn, system_prompt):
             tools=tool_schema,
             roleArn=role_arn,
             inferenceConfig={
-                "temperature": 0.3,
+                "temperature": 0.1,
                 "topK": 1
             },
             memory={"disabled": {}}

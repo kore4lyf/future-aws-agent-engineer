@@ -23,7 +23,7 @@
         }
       ],
       "expected_tool_call": "create_bug_report",
-      "reference_response": "Bug report filed successfully with ticket ID"
+      "reference_response": "Ticket filed: BUG-2026-001"
     },
     {
       "name": "bug_report_complete",
@@ -35,7 +35,7 @@
         }
       ],
       "expected_tool_call": "create_bug_report",
-      "reference_response": "Bug report filed successfully with ticket ID"
+      "reference_response": "Ticket filed: BUG-2026-001"
     },
     {
       "name": "platform_question_shipping",
@@ -95,7 +95,7 @@
         }
       ],
       "expected_tool_call": "create_bug_report",
-      "reference_response": "Bug report filed. Returns are accepted within 30 days."
+      "reference_response": "Ticket filed: BUG-2026-001. Returns are accepted within 30 days."
     }
   ]
 }
