@@ -45,7 +45,7 @@ def cleanup():
 
     print("\n=== Cleanup Complete ===")
     print("Note: CloudFormation stack and Lambda function were not deleted.")
-    print("To delete them: aws cloudformation delete-stack --stack-name customer-support-tools")
+    print("To delete them: aws cloudformation delete-stack --stack-name bug-report-tool-stack")
 
 
 if __name__ == "__main__":
