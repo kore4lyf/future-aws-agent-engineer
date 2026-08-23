@@ -1,0 +1,157 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Restaurant Recommendation Agent - Lambda Functions and IAM Roles
+
+Parameters:
+  StackName:
+    Type: String
+    Default: restaurant-agent
+
+Resources:
+  # Lambda Execution Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: restaurant-agent-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  # Gateway Role (the role the AgentCore Gateway assumes to invoke Lambdas)
+  GatewayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: restaurant-agent-gateway-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: invoke-lambdas
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:restaurant-agent-get-cuisines"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:restaurant-agent-search-restaurants"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:restaurant-agent-get-availability"
+
+  # Harness Execution Role
+  HarnessExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: restaurant-agent-harness-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+
+  # Lambda: get_cuisines
+  GetCuisinesFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: restaurant-agent-get-cuisines
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Code:
+        ZipFile: |
+          import json
+
+          def lambda_handler(event, context):
+              cuisines = [
+                  {"id": "italian", "name": "Italian", "description": "Pasta, pizza, and Mediterranean flavors"},
+                  {"id": "japanese", "name": "Japanese", "description": "Sushi, ramen, and traditional Japanese cuisine"},
+                  {"id": "mexican", "name": "Mexican", "description": "Tacos, burritos, and authentic Mexican dishes"},
+                  {"id": "indian", "name": "Indian", "description": "Curry, tandoori, and regional Indian specialties"},
+                  {"id": "american", "name": "American", "description": "Burgers, steaks, and classic American fare"}
+              ]
+              return {"cuisines": cuisines, "count": len(cuisines)}
+
+  # Lambda: search_restaurants
+  SearchRestaurantsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: restaurant-agent-search-restaurants
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Code:
+        ZipFile: |
+          import json
+
+          def lambda_handler(event, context):
+              cuisine_filter = event.get("cuisine", None)
+
+              restaurants = [
+                  {"id": "r1", "name": "Trattoria Bella", "cuisine": "Italian", "rating": 4.6, "price_range": "$$", "address": "123 Main St"},
+                  {"id": "r2", "name": "Osteria Romana", "cuisine": "Italian", "rating": 4.4, "price_range": "$$$", "address": "456 Oak Ave"},
+                  {"id": "r3", "name": "Sakura Sushi", "cuisine": "Japanese", "rating": 4.7, "price_range": "$$$", "address": "789 Pine Rd"},
+                  {"id": "r4", "name": "Taco Fiesta", "cuisine": "Mexican", "rating": 4.2, "price_range": "$", "address": "321 Elm St"},
+                  {"id": "r5", "name": "Curry House", "cuisine": "Indian", "rating": 4.6, "price_range": "$$", "address": "654 Maple Dr"},
+                  {"id": "r6", "name": "Burger Barn", "cuisine": "American", "rating": 4.3, "price_range": "$", "address": "987 Cedar Ln"}
+              ]
+
+              if cuisine_filter:
+                  filtered = [r for r in restaurants if r["cuisine"].lower() == cuisine_filter.lower()]
+              else:
+                  filtered = restaurants
+
+              return {"restaurants": filtered, "count": len(filtered)}
+
+  # Lambda: get_availability
+  GetAvailabilityFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: restaurant-agent-get-availability
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Code:
+        ZipFile: |
+          import json
+
+          def lambda_handler(event, context):
+              restaurant_id = event.get("restaurant_id", None)
+
+              availability = {
+                  "r1": {"restaurant_id": "r1", "available": True, "time_slots": ["7:00 PM", "7:30 PM", "8:00 PM", "8:30 PM"]},
+                  "r2": {"restaurant_id": "r2", "available": False, "time_slots": [], "reason": "Fully booked tonight"},
+                  "r3": {"restaurant_id": "r3", "available": True, "time_slots": ["6:30 PM", "7:00 PM", "9:00 PM"]},
+                  "r4": {"restaurant_id": "r4", "available": True, "time_slots": ["7:00 PM", "7:30 PM"]},
+                  "r5": {"restaurant_id": "r5", "available": True, "time_slots": ["6:00 PM", "6:30 PM", "7:00 PM", "7:30 PM", "8:00 PM"]},
+                  "r6": {"restaurant_id": "r6", "available": True, "time_slots": ["7:30 PM", "8:00 PM", "8:30 PM"]}
+              }
+
+              if restaurant_id:
+                  result = availability.get(restaurant_id, {"restaurant_id": restaurant_id, "available": False, "time_slots": [], "error": "Restaurant not found"})
+                  return result
+              else:
+                  return {"error": "restaurant_id is required"}
+
+Outputs:
+  LambdaExecutionRoleArn:
+    Value: !GetAtt LambdaExecutionRole.Arn
+  GatewayRoleArn:
+    Value: !GetAtt GatewayRole.Arn
+  HarnessExecutionRoleArn:
+    Value: !GetAtt HarnessExecutionRole.Arn

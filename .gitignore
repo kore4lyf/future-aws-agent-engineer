@@ -1,0 +1,24 @@
+# Environment variables
+.env
+
+# AWS config
+.aws/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+
+# Generated files
+demo_config.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
