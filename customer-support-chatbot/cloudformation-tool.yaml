@@ -1,0 +1,147 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Customer Support Chatbot - Lambda, DynamoDB, and IAM Roles
+
+Resources:
+  # DynamoDB Table for Bug Reports
+  BugReportsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: customer-support-bugs
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: ticket_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ticket_id
+          KeyType: HASH
+
+  # Lambda Execution Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: customer-support-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: dynamodb-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                Resource: !GetAtt BugReportsTable.Arn
+
+  # Gateway Role
+  GatewayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: customer-support-gateway-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: invoke-lambda
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:customer-support-create-bug-report"
+
+  # Harness Execution Role
+  HarnessExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: customer-support-harness-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+
+  # Lambda Function
+  CreateBugReportFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: customer-support-create-bug-report
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import uuid
+          from datetime import datetime
+
+          dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+          table_name = "customer-support-bugs"
+          table = dynamodb.Table(table_name)
+
+
+          def lambda_handler(event, context):
+              """Create a bug report in DynamoDB."""
+              try:
+                  # Extract tool input
+                  bug_description = event.get("bug_description", "")
+                  steps_to_reproduce = event.get("steps_to_reproduce", "")
+                  environment = event.get("environment", "")
+                  customer_id = event.get("customer_id", "anonymous")
+
+                  # Generate ticket ID
+                  ticket_id = f"BUG-{uuid.uuid4().hex[:8].upper()}"
+
+                  # Create item
+                  item = {
+                      "ticket_id": ticket_id,
+                      "bug_description": bug_description,
+                      "steps_to_reproduce": steps_to_reproduce,
+                      "environment": environment,
+                      "customer_id": customer_id,
+                      "status": "open",
+                      "created_at": datetime.utcnow().isoformat()
+                  }
+
+                  # Put item in DynamoDB
+                  table.put_item(Item=item)
+
+                  return {
+                      "ticket_id": ticket_id,
+                      "status": "created",
+                      "message": f"Bug report {ticket_id} has been filed successfully."
+                  }
+
+              except Exception as e:
+                  return {
+                      "status": "error",
+                      "message": f"Failed to create bug report: {str(e)}"
+                  }
+
+Outputs:
+  BugReportsTableName:
+    Value: !Ref BugReportsTable
+  LambdaExecutionRoleArn:
+    Value: !GetAtt LambdaExecutionRole.Arn
+  GatewayRoleArn:
+    Value: !GetAtt GatewayRole.Arn
+  HarnessExecutionRoleArn:
+    Value: !GetAtt HarnessExecutionRole.Arn
+  LambdaFunctionArn:
+    Value: !GetAtt CreateBugReportFunction.Arn
