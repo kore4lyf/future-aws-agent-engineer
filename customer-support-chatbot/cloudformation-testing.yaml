@@ -35,9 +35,9 @@ Resources:
                   - !Sub "${EvalBucket.Arn}/*"
 
 Outputs:
-  BucketName:
+  EvalDatasetBucketName:
     Value: !Ref EvalBucket
     Description: S3 bucket for evaluation datasets
-  RoleArn:
+  BedrockEvalRoleArn:
     Value: !GetAtt EvalRole.Arn
     Description: IAM role for Bedrock Evaluations

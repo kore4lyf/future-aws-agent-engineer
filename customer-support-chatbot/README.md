@@ -106,17 +106,31 @@ Assistant: I'm here to help with bug reports or platform questions (orders, ship
 
 ## Evaluation
 
-Run evaluation tests:
 ```bash
-# Generate evaluation dataset
-python generate-eval-dataset.py
+# 1. Copy test template and add your test cases
+cp harness-tests-template.json harness-tests.json
 
-# Deploy testing stack
+# 2. Generate evaluation dataset
+python generate-eval-dataset.py --tests-json harness-tests.json
+
+# 3. Deploy testing stack
 aws cloudformation deploy \
   --template-file cloudformation-testing.yaml \
-  --stack-name customer-support-eval \
+  --stack-name bug-report-testing-stack \
   --capabilities CAPABILITY_NAMED_IAM \
   --region us-east-1
 
-# Upload to S3 and run Bedrock Evaluation
+# 4. Get stack outputs
+aws cloudformation describe-stacks \
+  --stack-name bug-report-testing-stack \
+  --query 'Stacks[0].Outputs' \
+  --output table \
+  --region us-east-1
+
+# 5. Upload to S3
+aws s3 cp output_eval_dataset.jsonl \
+  s3://<EvalDatasetBucketName>/output_eval_dataset.jsonl \
+  --region us-east-1
+
+# 6. Run Bedrock Evaluation job (see Testing Framework docs)
 ```

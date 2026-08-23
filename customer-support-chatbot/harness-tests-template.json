@@ -1,101 +1,39 @@
 {
-  "test_suite": "customer-support-chatbot",
   "tests": [
     {
-      "name": "bug_report_basic",
-      "category": "bug_report",
-      "turns": [
-        {
-          "user": "The checkout page is broken",
-          "expected_behavior": "Ask for description of the problem"
-        },
-        {
-          "user": "It shows an error message when I click pay",
-          "expected_behavior": "Ask for steps to reproduce or environment"
-        },
-        {
-          "user": "I'm using Chrome on Windows 10",
-          "expected_behavior": "Ask for remaining missing information"
-        },
-        {
-          "user": "The error says 'Payment processing failed'",
-          "expected_behavior": "File bug report with create_bug_report tool"
-        }
-      ],
-      "expected_tool_call": "create_bug_report",
-      "reference_response": "Ticket filed: BUG-2026-001"
+      "id": "t1_bug_report",
+      "prompt": "The checkout page crashes every time I click Pay.",
+      "expected": "Acknowledges the bug and asks for steps to reproduce or environment details"
     },
     {
-      "name": "bug_report_complete",
-      "category": "bug_report",
-      "turns": [
-        {
-          "user": "Bug report: The login page shows a blank screen on Safari iOS 15. Steps to reproduce: open the app, tap login. Environment: iPhone 12, Safari, iOS 15.4",
-          "expected_behavior": "File bug report immediately with all details"
-        }
-      ],
-      "expected_tool_call": "create_bug_report",
-      "reference_response": "Ticket filed: BUG-2026-001"
+      "id": "t2_bug_report_all_fields",
+      "prompt": "Bug: login shows blank screen on Safari iOS 15. Steps: open app, tap login. Environment: iPhone 12, Safari, iOS 15.4.",
+      "expected": "Files a bug report with the create_bug_report tool and returns a ticket ID"
     },
     {
-      "name": "platform_question_shipping",
-      "category": "platform_question",
-      "turns": [
-        {
-          "user": "How long does shipping take?",
-          "expected_behavior": "Answer from FAQ about shipping times"
-        }
-      ],
-      "expected_tool_call": null,
-      "reference_response": "Standard shipping takes 3-5 business days. Express shipping is 1-2 business days for an additional fee. Orders over $50 qualify for free shipping."
+      "id": "t3_faq_shipping",
+      "prompt": "How long does shipping take?",
+      "expected": "Answers from the FAQ: standard shipping 3-5 business days, express 1-2 business days, free shipping over $50"
     },
     {
-      "name": "platform_question_returns",
-      "category": "platform_question",
-      "turns": [
-        {
-          "user": "Can I return an item I bought?",
-          "expected_behavior": "Answer from FAQ about return policy"
-        }
-      ],
-      "expected_tool_call": null,
-      "reference_response": "Returns are accepted within 30 days of delivery. Items must be unused and in original packaging. Refunds are processed within 5-7 business days."
+      "id": "t4_faq_returns",
+      "prompt": "Can I return an item I bought?",
+      "expected": "Answers from the FAQ: returns accepted within 30 days, items must be unused and in original packaging, refunds in 5-7 business days"
     },
     {
-      "name": "platform_question_payments",
-      "category": "platform_question",
-      "turns": [
-        {
-          "user": "What payment methods do you accept?",
-          "expected_behavior": "Answer from FAQ about payment methods"
-        }
-      ],
-      "expected_tool_call": null,
-      "reference_response": "We accept Visa, Mastercard, American Express, PayPal, and Apple Pay."
+      "id": "t5_faq_payments",
+      "prompt": "What payment methods do you accept?",
+      "expected": "Answers from the FAQ: Visa, Mastercard, American Express, PayPal, Apple Pay"
     },
     {
-      "name": "other_request",
-      "category": "other",
-      "turns": [
-        {
-          "user": "Can you help me write a essay?",
-          "expected_behavior": "Politely redirect to human support"
-        }
-      ],
-      "expected_tool_call": null,
-      "reference_response": "I can help with bug reports or platform questions. For other inquiries, I can connect you with human support."
+      "id": "t6_other",
+      "prompt": "Can you help me write an essay?",
+      "expected": "Politely redirects to human support for non-platform questions"
     },
     {
-      "name": "mixed_bug_and_question",
-      "category": "bug_report",
-      "turns": [
-        {
-          "user": "I can't checkout and also how do I return an item?",
-          "expected_behavior": "Address bug report first, then answer question"
-        }
-      ],
-      "expected_tool_call": "create_bug_report",
-      "reference_response": "Ticket filed: BUG-2026-001. Returns are accepted within 30 days."
+      "id": "t7_ambiguous",
+      "prompt": "I can't checkout and also how do I return an item?",
+      "expected": "Addresses the bug report aspect and answers the return question from the FAQ"
     }
   ]
 }

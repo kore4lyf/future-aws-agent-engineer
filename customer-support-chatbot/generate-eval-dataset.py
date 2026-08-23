@@ -1,6 +1,7 @@
 import boto3
 import json
 import uuid
+import argparse
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,15 +22,6 @@ def load_harness_arn():
         return None
 
 
-def load_test_suite():
-    try:
-        with open("harness-tests-template.json", "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print("Error: harness-tests-template.json not found.")
-        return None
-
-
 def invoke_harness(harness_arn, session_id, user_message):
     """Invoke the harness and return the response."""
     try:
@@ -45,7 +37,6 @@ def invoke_harness(harness_arn, session_id, user_message):
                 chunk = event["chunk"]
                 if "bytes" in chunk:
                     text = chunk["bytes"].decode("utf-8")
-                    # Hide thinking tags
                     if "<thinking>" not in text and "</thinking>" not in text:
                         full_response.append(text)
 
@@ -53,7 +44,7 @@ def invoke_harness(harness_arn, session_id, user_message):
 
     except Exception as e:
         print(f"Error: {e}")
-        return None
+        return f"[HARNESS_ERROR] {e}"
 
 
 def run_test(harness_arn, test):
@@ -63,69 +54,68 @@ def run_test(harness_arn, test):
         session_id += str(uuid.uuid4()).replace("-", "")
     session_id = session_id[:43]
 
+    test_id = test["id"]
+    prompt = test["prompt"]
+    expected = test["expected"]
+
     print(f"\n{'=' * 60}")
-    print(f"Test: {test['name']}")
-    print(f"Category: {test['category']}")
+    print(f"Test: {test_id}")
+    print(f"Prompt: {prompt}")
     print(f"{'=' * 60}")
 
-    conversation = []
-    for turn in test["turns"]:
-        user_message = turn["user"]
-        print(f"\nUser: {user_message}")
-
-        response = invoke_harness(harness_arn, session_id, user_message)
-        if response:
-            print(f"Assistant: {response}")
-            conversation.append({"user": user_message, "assistant": response})
+    response = invoke_harness(harness_arn, session_id, prompt)
+    print(f"Response: {response}")
 
     return {
-        "test_name": test["name"],
-        "category": test["category"],
-        "conversation": conversation,
-        "expected_tool_call": test.get("expected_tool_call"),
-        "reference_response": test.get("reference_response")
+        "prompt": prompt,
+        "referenceResponse": expected,
+        "modelResponses": [
+            {
+                "response": response,
+                "modelIdentifier": "my-support-chatbot"
+            }
+        ]
     }
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Generate evaluation dataset from harness tests")
+    parser.add_argument("--tests-json", default="harness-tests.json", help="Path to tests JSON file (default: harness-tests.json)")
+    args = parser.parse_args()
+
     print("=== Generate Evaluation Dataset ===\n")
 
     harness_arn = load_harness_arn()
     if not harness_arn:
         return
 
-    test_suite = load_test_suite()
-    if not test_suite:
+    try:
+        with open(args.tests_json, "r") as f:
+            test_suite = json.load(f)
+    except FileNotFoundError:
+        print(f"Error: {args.tests_json} not found.")
+        print("Copy harness-tests-template.json to harness-tests.json and add your test cases.")
         return
 
-    print(f"Loaded {len(test_suite['tests'])} tests\n")
+    tests = test_suite.get("tests", [])
+    print(f"Loaded {len(tests)} tests from {args.tests_json}\n")
 
     results = []
-    for test in test_suite["tests"]:
+    for test in tests:
         result = run_test(harness_arn, test)
         results.append(result)
 
-    # Write JSONL file
-    output_file = "eval_responses.jsonl"
+    output_file = "output_eval_dataset.jsonl"
     with open(output_file, "w") as f:
         for result in results:
-            record = {
-                "prompt": result["conversation"][0]["user"] if result["conversation"] else "",
-                "referenceResponse": result["reference_response"],
-                "modelResponses": [
-                    {
-                        "response": result["conversation"][-1]["assistant"] if result["conversation"] else "",
-                        "modelIdentifier": "customer-support-chatbot"
-                    }
-                ]
-            }
-            f.write(json.dumps(record) + "\n")
+            f.write(json.dumps(result) + "\n")
 
     print(f"\nWrote {len(results)} records to {output_file}")
     print("\nNext steps:")
-    print("1. Deploy testing stack: aws cloudformation deploy --template-file cloudformation-testing.yaml --stack-name customer-support-eval --capabilities CAPABILITY_NAMED_IAM --region us-east-1")
-    print("2. Upload to S3: aws s3 cp eval_responses.jsonl s3://<bucket-name>/eval_responses.jsonl")
-    print("3. Run Bedrock Evaluation job")
+    print("1. Deploy testing stack: aws cloudformation deploy --template-file cloudformation-testing.yaml --stack-name bug-report-testing-stack --capabilities CAPABILITY_NAMED_IAM --region us-east-1")
+    print("2. Get stack outputs: aws cloudformation describe-stacks --stack-name bug-report-testing-stack --query 'Stacks[0].Outputs' --output table --region us-east-1")
+    print("3. Upload to S3: aws s3 cp output_eval_dataset.jsonl s3://<EvalDatasetBucketName>/output_eval_dataset.jsonl --region us-east-1")
+    print("4. Run Bedrock Evaluation job")
 
 
 if __name__ == "__main__":
