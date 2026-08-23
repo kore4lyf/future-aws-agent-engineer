@@ -11,7 +11,7 @@ bedrock = boto3.client("bedrock-agentcore", region_name="us-east-1")
 iam = boto3.client("iam", region_name="us-east-1")
 
 GATEWAY_NAME = "customer-support-gateway"
-TARGET_NAME = "bug_report"
+TARGET_NAME = "bugreports"
 HARNESS_NAME = "customer-support-chatbot"
 
 
