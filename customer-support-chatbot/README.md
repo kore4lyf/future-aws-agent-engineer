@@ -5,12 +5,14 @@ A customer support chatbot that handles bug reports, platform questions, and oth
 ## Architecture
 
 ```
-User → chat.py → AgentCore Harness → ReAct Loop → Lambda Tool → DynamoDB
-                                    ↓
-                         ┌─────────┴─────────┐
-                         │                   │
-                    Bug Report          Platform FAQ
-                    (Lambda + DDB)      (Embedded in prompt)
+User → Bedrock Flow → Classifier → Condition → Paths
+                        │
+          ┌─────────────┼─────────────┐
+          │             │             │
+     Bug Report    Platform Q    Other Request
+     (Harness)     (FAQ)         (Redirect)
+          │
+     AgentCore Harness → Lambda Tool → DynamoDB
 ```
 
 ## Features
@@ -23,7 +25,8 @@ User → chat.py → AgentCore Harness → ReAct Loop → Lambda Tool → Dynamo
 
 | File | Purpose |
 |------|---------|
-| `system_prompt.txt` | Main system prompt (main deliverable) |
+| `system_prompt.txt` | System prompt for bug report collection (used by harness) |
+| `cloudformation-flow.yaml` | Bedrock Flow with classifier, condition, and 3 paths |
 | `cloudformation-tool.yaml` | Deploys DynamoDB, Lambda, and IAM roles |
 | `create_bug_report.py` | Lambda function code |
 | `setup_gateway.py` | Creates AgentCore Gateway |
@@ -39,23 +42,36 @@ User → chat.py → AgentCore Harness → ReAct Loop → Lambda Tool → Dynamo
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Deploy CloudFormation stack
+# 2. Deploy CloudFormation stack (Lambda, DynamoDB, IAM)
 aws cloudformation deploy \
   --template-file cloudformation-tool.yaml \
   --stack-name bug-report-tool-stack \
   --capabilities CAPABILITY_NAMED_IAM \
   --region us-east-1
 
-# 3. Create Gateway
+# 3. Deploy Bedrock Flow
+aws cloudformation deploy \
+  --template-file cloudformation-flow.yaml \
+  --stack-name bug-report-flow-stack \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region us-east-1
+
+# 4. Create Gateway
 python setup_gateway.py
 
-# 4. Create Harness
+# 5. Create Harness
 python create_harness.py
 
-# 5. Chat
+# 6. Chat (using harness directly)
 python chat.py
 
-# 6. Cleanup
+# 7. Test Flow in Bedrock console
+# - Go to Bedrock → Flows → customer-support-flow
+# - Test with: "The checkout page is broken"
+# - Test with: "How long does shipping take?"
+# - Test with: "Can you help me with my homework?"
+
+# 8. Cleanup
 python cleanup_agentcore.py
 ```
 
