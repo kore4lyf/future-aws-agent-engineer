@@ -124,10 +124,10 @@ Assistant: I'm here to help with bug reports or platform questions (orders, ship
 
 ```bash
 # 1. Copy test template and add your test cases
-cp harness-tests-template.json harness-tests.json
+cp flow-tests-template.json flow-tests.json
 
 # 2. Generate evaluation dataset
-python generate-eval-dataset.py --tests-json harness-tests.json
+python generate-eval-dataset.py --tests-json flow-tests.json
 
 # 3. Deploy testing stack
 aws cloudformation deploy \

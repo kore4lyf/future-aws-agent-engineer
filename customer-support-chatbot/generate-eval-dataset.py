@@ -80,7 +80,7 @@ def run_test(harness_arn, test):
 
 def main():
     parser = argparse.ArgumentParser(description="Generate evaluation dataset from harness tests")
-    parser.add_argument("--tests-json", default="harness-tests.json", help="Path to tests JSON file (default: harness-tests.json)")
+    parser.add_argument("--tests-json", default="flow-tests.json", help="Path to tests JSON file (default: flow-tests.json)")
     args = parser.parse_args()
 
     print("=== Generate Evaluation Dataset ===\n")
@@ -94,7 +94,7 @@ def main():
             test_suite = json.load(f)
     except FileNotFoundError:
         print(f"Error: {args.tests_json} not found.")
-        print("Copy harness-tests-template.json to harness-tests.json and add your test cases.")
+        print("Copy flow-tests-template.json to flow-tests.json and add your test cases.")
         return
 
     tests = test_suite.get("tests", [])
