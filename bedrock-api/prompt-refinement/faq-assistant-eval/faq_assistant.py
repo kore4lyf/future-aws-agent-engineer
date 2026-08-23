@@ -9,13 +9,13 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 bedrock = boto3.client("bedrock-runtime", region_name="us-east-1")
 
-# TODO: Fill in after completing the console steps in the README.
+# ARN of the versioned prompt created in the Bedrock Prompt Management console.
 PROMPT_VERSION_ARN = "<YOUR_PROMPT_VERSION_ARN>"
 
 OUTPUT_FILE = "eval_responses.jsonl"
 
 # ---------------------------------------------------------------------------
-# Product FAQ (provided)
+# Product FAQ
 # ---------------------------------------------------------------------------
 PRODUCT_FAQ = """\
 Product FAQ
@@ -53,38 +53,34 @@ Support:
 """
 
 # ---------------------------------------------------------------------------
-# Eval dataset – answerable and unanswerable questions
+# Eval dataset
 # ---------------------------------------------------------------------------
 EVAL_QUESTIONS = [
-    # Answerable questions (answers in FAQ)
+    # Answerable questions
     {
         "prompt": "What is the price of the team plan?",
-        "referenceResponse": "The team plan is $99 per month for up to 10 users.",
+        "referenceResponse": "The team plan is $99 per month and supports up to 10 users.",
     },
     {
-        "prompt": "How long is the free trial?",
-        "referenceResponse": "The free trial is 14 days and no credit card is required to start.",
+        "prompt": "Does the product offer a free trial?",
+        "referenceResponse": "Yes, a 14-day free trial is available for all plans with no credit card required.",
     },
     {
-        "prompt": "What integrations do you support?",
-        "referenceResponse": "We support integrations with Slack and Google Workspace only.",
-    },
-    {
-        "prompt": "How much storage do I get with the individual plan?",
+        "prompt": "How much storage does the individual plan include?",
         "referenceResponse": "The individual plan includes 10 GB of storage per user.",
     },
     {
-        "prompt": "Is the platform SOC 2 certified?",
-        "referenceResponse": "Yes, we are SOC 2 Type II certified and all data is encrypted at rest and in transit.",
+        "prompt": "What integrations does the product support?",
+        "referenceResponse": "The product integrates with Slack and Google Workspace only.",
     },
-    # Unanswerable questions (not in FAQ)
+    # Unanswerable questions
     {
-        "prompt": "Do you offer a discount for nonprofits?",
-        "referenceResponse": "I'm sorry, but I don't have information about nonprofit discounts in my FAQ. Please contact our sales team for custom pricing options.",
+        "prompt": "Does the product integrate with Microsoft Teams?",
+        "referenceResponse": "That information is not available in the FAQ. The FAQ mentions Slack and Google Workspace integrations only.",
     },
     {
-        "prompt": "Can I integrate with Jira or Trello?",
-        "referenceResponse": "I'm sorry, but I don't have information about Jira or Trello integrations. Our current integrations are limited to Slack and Google Workspace.",
+        "prompt": "Is the product HIPAA compliant?",
+        "referenceResponse": "That information is not available in the FAQ. The FAQ mentions SOC 2 Type II certification only.",
     },
 ]
 
