@@ -2,9 +2,32 @@
 
 ## Overview
 
-AgentCore is AWS's managed agent runtime that runs the ReAct (Reason + Act) loop for you. You define tools and prompts, AWS handles the orchestration.
+There are **two distinct AWS services** for building agents on Bedrock. They are NOT the same API version — they are separate products:
 
-## Architecture
+| Service | boto3 Client | Status | Notes |
+|---------|--------------|--------|-------|
+| **Bedrock Agents (Classic)** | `bedrock-agent` | In maintenance mode (no new agent creation) | Older service. Uses `create_agent`, action groups, agent aliases |
+| **Bedrock AgentCore** | `bedrock-agentcore` + `bedrock-agentcore-control` | Actively developed (current) | Newer service. Uses Gateways + Targets + Agent Runtimes |
+
+**Important:** The original demo code was written for **AgentCore**, but many online examples and the Udacity course may reference **Bedrock Agents (Classic)**. They are different APIs — do not mix them.
+
+### Bedrock Agents (Classic) — Key Facts
+
+- Client: `boto3.client("bedrock-agent")`
+- Creates agents with `create_agent(agentName=..., instruction=..., foundationModel=..., agentResourceRoleArn=...)`
+- Tools attached via **action groups** (`create_agent_action_group`)
+- Deployed via **agent aliases** (`create_agent_alias`)
+- **As of Aug 2026: in maintenance mode** — new agent creation returns:
+  `Bedrock Agents is in Maintenance Mode. New agent creation is not available for accounts without prior service usage.`
+
+### AgentCore — Key Facts
+
+- Two clients: `bedrock-agentcore` (runtime) and `bedrock-agentcore-control` (control plane)
+- Tools exposed via **Gateway → Targets** (MCP protocol)
+- Deployed as **Agent Runtime** (`create_agent_runtime`)
+- Runs the ReAct loop server-side
+
+## Architecture (AgentCore)
 
 ```
 User → chat.py → AgentCore Harness (ReAct Loop) → Gateway → Lambda Tools
@@ -14,7 +37,7 @@ User → chat.py → AgentCore Harness (ReAct Loop) → Gateway → Lambda Tools
 
 ## Key Learnings
 
-### 1. Two Different API Clients
+### 1. Two Different API Clients (AgentCore only)
 
 AgentCore uses **two separate boto3 clients**:
 
@@ -26,7 +49,7 @@ AgentCore uses **two separate boto3 clients**:
 ```python
 # WRONG - using same client for everything
 bedrock = boto3.client("bedrock-agentcore", region_name="us-east-1")
-bedrock.create_gateway(...)  # ❌ AttributeError
+bedrock.create_gateway(...)  # ❌ AttributeError: no create_gateway
 
 # CORRECT - use separate clients
 bedrock = boto3.client("bedrock-agentcore", region_name="us-east-1")
@@ -36,17 +59,17 @@ bedrock_control.create_gateway(...)  # ✅ Works
 
 ### 2. Gateway Creation Parameters
 
-The `create_gateway` API has specific required parameters:
+The `create_gateway` API (AgentCore) requires specific parameters:
 
 ```python
-# WRONG - old parameter names
+# WRONG - wrong field names
 bedrock_control.create_gateway(
     gatewayName="my-gateway",  # ❌ Wrong name
     roleArn=role_arn,
     authorizerType="CUSTOM_JWT"  # ❌ Requires authorizerConfiguration
 )
 
-# CORRECT - new parameter names
+# CORRECT
 bedrock_control.create_gateway(
     name="my-gateway",  # ✅ Correct name
     roleArn=role_arn,
@@ -55,49 +78,65 @@ bedrock_control.create_gateway(
 )
 ```
 
-### 3. Gateway Target Creation Parameters
+**Required fields:** `name`, `roleArn`, `authorizerType`
 
-The `create_gateway_target` API has changed significantly:
+### 3. Gateway Target Creation Parameters (Lambda)
+
+The `create_gateway_target` API requires:
+- `gatewayIdentifier` (NOT `gatewayId`)
+- `name` (NOT `targetName`)
+- `credentialProviderConfigurations` — **required list, min 1 item**
+- `targetConfiguration` — nested under `mcp.lambda`
+
+**Critical discovery — credential provider:**
+Lambda targets only support `GATEWAY_IAM_ROLE` as the `credentialProviderType`. Other types (`OAUTH`, `API_KEY`, `CALLER_IAM_CREDENTIALS`, `JWT_PASSTHROUGH`) fail. The `iamCredentialProvider` sub-structure is NOT accepted for Lambda targets — pass the type only.
 
 ```python
-# WRONG - old parameter names
-bedrock_control.create_gateway_target(
-    gatewayId=gateway_id,  # ❌ Wrong name
-    targetName="weather",  # ❌ Wrong name
-    targetDescription="Weather tool",  # ❌ Wrong name
-    targetUri=lambda_arn,  # ❌ Wrong name
-    protocolType="MCP",  # ❌ Not a parameter
-    toolSchema=[...]  # ❌ Not a parameter
-)
+credential_config = [
+    {"credentialProviderType": "GATEWAY_IAM_ROLE"}
+]
 
-# CORRECT - new parameter names
 bedrock_control.create_gateway_target(
-    gatewayIdentifier=gateway_id,  # ✅ Correct name
-    name="weather",  # ✅ Correct name
-    description="Weather tool",  # ✅ Correct name
-    targetConfiguration={  # ✅ New structure
-        "lambda": {
-            "lambdaArn": lambda_arn
+    gatewayIdentifier=gateway_id,        # ✅ NOT gatewayId
+    name="weather",                      # ✅ NOT targetName
+    description="Weather lookup tool",
+    credentialProviderConfigurations=credential_config,  # ✅ REQUIRED
+    targetConfiguration={
+        "mcp": {
+            "lambda": {
+                "lambdaArn": lambda_arn,
+                "toolSchema": {
+                    "inlinePayload": [        # ✅ List of tool defs
+                        {
+                            "name": "get_weather",
+                            "description": "Get current weather for a city on a specific date",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "city": {"type": "string", "description": "The city name"},
+                                    "date": {"type": "string", "description": "The date in YYYY-MM-DD format"}
+                                },
+                                "required": ["city", "date"]
+                            }
+                        }
+                    ]
+                }
+            }
         }
     }
 )
 ```
 
-### 4. Agent Runtime Creation (Major API Change)
+**Tool schema goes inline** under `targetConfiguration.mcp.lambda.toolSchema.inlinePayload` — NOT as a top-level `toolSchema` argument.
 
-The `create_agent_runtime` API has completely changed:
+### 4. Agent Runtime Creation (AgentCore)
+
+`create_agent_runtime` requires:
+- `agentRuntimeName` (NOT `name`)
+- `agentRuntimeArtifact` — contains either `codeConfiguration` (S3 code) or `containerConfiguration` (container image)
+- `roleArn`
 
 ```python
-# OLD API (no longer works)
-bedrock_control.create_agent_runtime(
-    name="my-harness",
-    modelId="amazon.nova-lite-v1:0",
-    instructionPrompt="You are a helpful assistant...",
-    tools=[...],
-    roleArn=role_arn
-)
-
-# NEW API (current)
 bedrock_control.create_agent_runtime(
     agentRuntimeName="my-harness",
     agentRuntimeArtifact={
@@ -112,11 +151,9 @@ bedrock_control.create_agent_runtime(
 )
 ```
 
-**Key Changes:**
-- `name` → `agentRuntimeName`
-- `modelId`, `instructionPrompt`, `tools` → `agentRuntimeArtifact`
-- Code must be stored in S3
-- `entryPoint` is now a list, not a string
+**Key constraint discovered:** Agent Runtime now expects application code (stored in S3) — it is a general runtime host, NOT a simple "prompt + tools" definition like the old harness API. This means the original demo's `modelId`/`instructionPrompt`/`tools` parameters no longer exist. For a quick lab, create the Agent Runtime via the **AWS Console** (it provides a UI for model + prompt + tools), then use boto3 only for `invoke_agent_runtime`.
+
+**Working alternative we confirmed:** Bedrock Agents (Classic) `create_agent` is simpler (only `agentName` required), but it is in maintenance mode and blocked for new accounts — so AgentCore is the only path.
 
 ### 5. Gateway Response Field Names
 
@@ -215,27 +252,28 @@ for event in response.get("events", []):
         result = event["toolResult"]["result"]
 ```
 
-## API Versioning Issue
+## Two Services, Not an API Change
 
-**Warning:** The AgentCore API is evolving rapidly. The original code in this repository was written for an older version and may not work with the current API.
+**Clarification:** The AgentCore API did NOT "change" from the original demo code. The original demo was written for **AgentCore**, but there is a separate, older product — **Bedrock Agents (Classic)** — that many tutorials reference. They are different services with different clients and different APIs. Do not assume one evolved from the other.
 
-### What Changed
-
-| Feature | Old API | New API |
-|---------|---------|---------|
-| Gateway creation | `gatewayName` | `name` |
-| Gateway target | `gatewayId`, `targetName`, `toolSchema` | `gatewayIdentifier`, `name`, `targetConfiguration` |
-| Agent runtime | `name`, `modelId`, `instructionPrompt`, `tools` | `agentRuntimeName`, `agentRuntimeArtifact` |
-| Code storage | Inline | S3 only |
+| Concept | Bedrock Agents (Classic) | AgentCore |
+|---------|--------------------------|-----------|
+| Client | `bedrock-agent` | `bedrock-agentcore` + `bedrock-agentcore-control` |
+| Resource | Agent + Action Group | Gateway + Target + Agent Runtime |
+| Tool wiring | Action group → Lambda | Target (MCP) → Lambda |
+| Deploy | Agent Alias | Agent Runtime |
+| Create call | `create_agent(agentName=...)` | `create_agent_runtime(agentRuntimeName=..., agentRuntimeArtifact=...)` |
+| Status | Maintenance mode (no new agents) | Current / actively developed |
 
 ### Current Status (as of August 2026)
 
 | Resource | Status |
 |----------|--------|
-| Gateway creation | ✅ Works with new API |
+| Gateway creation | ✅ Works (`bedrock-agentcore-control.create_gateway`) |
 | Gateway targets | ✅ Works with `credentialProviderConfigurations=[{"credentialProviderType": "GATEWAY_IAM_ROLE"}]` |
-| Agent runtime | ❌ Requires S3 code storage (cannot create via simple boto3 call) |
-| Bedrock Agents (classic) | ❌ In maintenance mode, new creation blocked |
+| Agent runtime (boto3) | ⚠️ Requires S3 code artifact (`agentRuntimeArtifact`) — not a simple prompt+tools call |
+| Agent runtime (console) | ✅ Works — use console UI for model + prompt + tools, then `invoke_agent_runtime` |
+| Bedrock Agents (classic) | ❌ Maintenance mode, new creation blocked for this account |
 
 ### Gateway Target Creation (Working)
 
