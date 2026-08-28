@@ -36,7 +36,7 @@ Notes on building agents with Amazon Bedrock AgentCore.
 - Tool naming conventions
 - Session management
 
-**Status:** ⚠️ Partially working — API has evolved, some updates needed
+**Status:** ✅ Working — AgentCore uses `create_harness` / `invoke_harness` (verified against boto3 service model)
 
 ## Quick Reference
 
@@ -65,10 +65,10 @@ response = bedrock_runtime.invoke_flow(
 )
 ```
 
-### AgentCore
+### AgentCore (Harness)
 
 ```python
-# Create gateway
+# Control client — create gateway + harness
 bedrock_control = boto3.client("bedrock-agentcore-control", region_name="us-east-1")
 
 response = bedrock_control.create_gateway(
@@ -78,13 +78,22 @@ response = bedrock_control.create_gateway(
     protocolType="MCP"
 )
 
-# Invoke agent
+response = bedrock_control.create_harness(
+    harnessName="my-harness",
+    executionRoleArn=role_arn,
+    model={"bedrockModelConfig": {"modelId": "amazon.nova-lite-v1:0"}},
+    systemPrompt=[{"text": "You are a helpful assistant."}],
+    tools=[{"type": "agentCoreGateway", "name": "weather___get_weather",
+            "config": {"agentCoreGateway": {"gatewayArn": gateway_arn, "outboundAuth": {"none": {}}}}}]
+)
+
+# Runtime client — invoke harness
 bedrock = boto3.client("bedrock-agentcore", region_name="us-east-1")
 
-response = bedrock.invoke_agent_runtime(
-    agentRuntimeId="my-harness",
-    sessionId="session-123",
-    messages=[{"role": "user", "content": "Hello"}]
+response = bedrock.invoke_harness(
+    harnessArn=harness_arn,
+    runtimeSessionId="session-1234567890123456789abc",
+    messages=[{"role": "user", "content": [{"text": "Hello"}]}]
 )
 ```
 

@@ -7,7 +7,7 @@ There are **two distinct AWS services** for building agents on Bedrock. They are
 | Service | boto3 Client | Status | Notes |
 |---------|--------------|--------|-------|
 | **Bedrock Agents (Classic)** | `bedrock-agent` | In maintenance mode (no new agent creation) | Older service. Uses `create_agent`, action groups, agent aliases |
-| **Bedrock AgentCore** | `bedrock-agentcore` + `bedrock-agentcore-control` | Actively developed (current) | Newer service. Uses Gateways + Targets + Agent Runtimes |
+| **Bedrock AgentCore** | `bedrock-agentcore` (runtime) + `bedrock-agentcore-control` (control) | Actively developed (current) | Newer service. Uses **Gateways + Targets + Harness** |
 
 **Important:** The original demo code was written for **AgentCore**, but many online examples and the Udacity course may reference **Bedrock Agents (Classic)**. They are different APIs — do not mix them.
 
@@ -24,8 +24,9 @@ There are **two distinct AWS services** for building agents on Bedrock. They are
 
 - Two clients: `bedrock-agentcore` (runtime) and `bedrock-agentcore-control` (control plane)
 - Tools exposed via **Gateway → Targets** (MCP protocol)
-- Deployed as **Agent Runtime** (`create_agent_runtime`)
+- Deployed as a **Harness** via `create_harness` (NOT `create_agent_runtime`)
 - Runs the ReAct loop server-side
+- Invoked via `invoke_harness` (NOT `invoke_agent_runtime`)
 
 ## Architecture (AgentCore)
 
@@ -43,8 +44,8 @@ AgentCore uses **two separate boto3 clients**:
 
 | Client | Purpose | Methods |
 |--------|---------|---------|
-| `bedrock-agentcore` | Runtime operations | `invoke_agent_runtime`, `invoke_agent_runtime_command` |
-| `bedrock-agentcore-control` | Control plane operations | `create_gateway`, `create_gateway_target`, `create_agent_runtime`, `list_agent_runtimes` |
+| `bedrock-agentcore` | Runtime operations | `invoke_harness`, `invoke_agent_runtime`, `invoke_agent_runtime_command` |
+| `bedrock-agentcore-control` | Control plane operations | `create_gateway`, `create_gateway_target`, `create_harness`, `list_harnesses` |
 
 ```python
 # WRONG - using same client for everything
@@ -129,29 +130,79 @@ bedrock_control.create_gateway_target(
 
 **Tool schema goes inline** under `targetConfiguration.mcp.lambda.toolSchema.inlinePayload` — NOT as a top-level `toolSchema` argument.
 
-### 4. Agent Runtime Creation (AgentCore)
+### 4. Harness Creation — `create_harness` (NOT `create_agent_runtime`)
 
-`create_agent_runtime` requires:
-- `agentRuntimeName` (NOT `name`)
-- `agentRuntimeArtifact` — contains either `codeConfiguration` (S3 code) or `containerConfiguration` (container image)
-- `roleArn`
+**Critical correction:** The original demo failed because it called `create_agent_runtime`, which is the **wrong** control-plane method for a managed ReAct harness. The correct method is **`create_harness`** (on `bedrock-agentcore-control`). This is the AgentCore equivalent of the original intent — it takes a model, system prompt, and tools directly. **No S3 code storage is needed.** (There is also a separate `create_agent_runtime` for shipping your own application code/container, but that is a different use case.)
+
+**Required fields:** `harnessName`, `executionRoleArn`
 
 ```python
-bedrock_control.create_agent_runtime(
-    agentRuntimeName="my-harness",
-    agentRuntimeArtifact={
-        "codeConfiguration": {
-            "code": {"s3": {"s3Uri": "s3://bucket/code.zip"}},
-            "runtime": "python3.11",
-            "entryPoint": ["handler"]
+harness = bedrock_control.create_harness(
+    harnessName="demo3-harness",
+    executionRoleArn=role_arn,                       # IAM role (AgentCore + Lambda trust)
+    model={
+        "bedrockModelConfig": {
+            "modelId": "amazon.nova-lite-v1:0"        # ✅ Nested under bedrockModelConfig
         }
     },
-    roleArn=role_arn,
-    description="My agent"
+    systemPrompt=[{"text": SYSTEM_PROMPT}],           # ✅ List of {text}, not a string
+    tools=[
+        {
+            "type": "agentCoreGateway",
+            "name": "weather___get_weather",
+            "config": {
+                "agentCoreGateway": {
+                    "gatewayArn": gateway_arn,        # ✅ ARN of the Gateway, not inline schema
+                    "outboundAuth": {"none": {}}
+                }
+            }
+        },
+        {
+            "type": "agentCoreGateway",
+            "name": "attractions___get_top_attractions",
+            "config": {
+                "agentCoreGateway": {
+                    "gatewayArn": gateway_arn,
+                    "outboundAuth": {"none": {}}
+                }
+            }
+        }
+    ]
 )
+harness_arn = harness["harnessArn"]
 ```
 
-**Key constraint discovered:** Agent Runtime now expects application code (stored in S3) — it is a general runtime host, NOT a simple "prompt + tools" definition like the old harness API. This means the original demo's `modelId`/`instructionPrompt`/`tools` parameters no longer exist. For a quick lab, create the Agent Runtime via the **AWS Console** (it provides a UI for model + prompt + tools), then use boto3 only for `invoke_agent_runtime`.
+**Key shape notes (verified from the boto3 service model):**
+- `model` is a structure with `bedrockModelConfig.modelId` (not a flat `modelId`)
+- `systemPrompt` is a **list** of `{text: ...}`, not a plain string
+- `tools[].type` must be `"agentCoreGateway"` and the tool config references the **Gateway ARN** (`agentCoreGateway.gatewayArn`). The tool name still uses the `target___tool` namespacing.
+- Gateway ARN is obtained from `get_gateway(gatewayIdentifier=...)` → `gatewayArn` (note: `list_gateways` returns `gatewayId`, but `create_harness` needs the full ARN).
+
+### 5. Invoking the Harness — `invoke_harness` (NOT `invoke_agent_runtime`)
+
+Once created, invoke with **`invoke_harness`** on the **runtime** client (`bedrock-agentcore`), not `invoke_agent_runtime` (which is for the code-artifact Agent Runtime).
+
+```python
+runtime = boto3.client("bedrock-agentcore", region_name="us-east-1")
+
+response = runtime.invoke_harness(
+    harnessArn=harness_arn,
+    runtimeSessionId=session_id,               # 33-43 char session id
+    messages=[{"role": "user", "content": [{"text": "I'll be in London Saturday. What should we do?"}]}]
+)
+
+# Streaming events
+for event in response.get("events", []):
+    if "chunk" in event:
+        text = event["chunk"]["bytes"].decode("utf-8")
+    elif "toolCall" in event:
+        name = event["toolCall"]["name"]
+        args = event["toolCall"]["arguments"]
+    elif "toolResult" in event:
+        result = event["toolResult"]["result"]
+```
+
+**Note:** `runtimeSessionId` must be 33–43 characters (use the UUID-padding trick from the original `chat.py`).
 
 **Working alternative we confirmed:** Bedrock Agents (Classic) `create_agent` is simpler (only `agentName` required), but it is in maintenance mode and blocked for new accounts — so AgentCore is the only path.
 
@@ -258,11 +309,11 @@ for event in response.get("events", []):
 
 | Concept | Bedrock Agents (Classic) | AgentCore |
 |---------|--------------------------|-----------|
-| Client | `bedrock-agent` | `bedrock-agentcore` + `bedrock-agentcore-control` |
-| Resource | Agent + Action Group | Gateway + Target + Agent Runtime |
+| Client | `bedrock-agent` | `bedrock-agentcore` (runtime) + `bedrock-agentcore-control` (control) |
+| Resource | Agent + Action Group | Gateway + Target + **Harness** |
 | Tool wiring | Action group → Lambda | Target (MCP) → Lambda |
-| Deploy | Agent Alias | Agent Runtime |
-| Create call | `create_agent(agentName=...)` | `create_agent_runtime(agentRuntimeName=..., agentRuntimeArtifact=...)` |
+| Deploy | Agent Alias | Harness (`create_harness` / `invoke_harness`) |
+| Create call | `create_agent(agentName=...)` | `create_harness(harnessName=..., executionRoleArn=..., model=..., systemPrompt=..., tools=...)` |
 | Status | Maintenance mode (no new agents) | Current / actively developed |
 
 ### Current Status (as of August 2026)
@@ -271,8 +322,8 @@ for event in response.get("events", []):
 |----------|--------|
 | Gateway creation | ✅ Works (`bedrock-agentcore-control.create_gateway`) |
 | Gateway targets | ✅ Works with `credentialProviderConfigurations=[{"credentialProviderType": "GATEWAY_IAM_ROLE"}]` |
-| Agent runtime (boto3) | ⚠️ Requires S3 code artifact (`agentRuntimeArtifact`) — not a simple prompt+tools call |
-| Agent runtime (console) | ✅ Works — use console UI for model + prompt + tools, then `invoke_agent_runtime` |
+| Harness creation | ✅ Works (`create_harness` — model + prompt + tools, no S3 needed) |
+| Harness invocation | ✅ Works (`invoke_harness` on runtime client) |
 | Bedrock Agents (classic) | ❌ Maintenance mode, new creation blocked for this account |
 
 ### Gateway Target Creation (Working)
@@ -310,48 +361,48 @@ bedrock_control.create_gateway_target(
 )
 ```
 
-### Agent Runtime (Requires Console)
+### Working End-to-End Pattern (verified)
 
-The `create_agent_runtime` API now requires:
-- `agentRuntimeName`
-- `agentRuntimeArtifact` with S3 code storage
-- `roleArn`
+1. `create_gateway` → get `gatewayId`, then `get_gateway(gatewayIdentifier=...)` → `gatewayArn`
+2. `create_gateway_target` (one per tool, `credentialProviderConfigurations=[{"credentialProviderType": "GATEWAY_IAM_ROLE"}]`)
+3. `create_harness(harnessName=..., executionRoleArn=..., model={bedrockModelConfig:{modelId}}, systemPrompt=[{text}], tools=[{type:"agentCoreGateway", name, config:{agentCoreGateway:{gatewayArn, outboundAuth:{none:{}}}}}]})`
+4. Wait for harness `status == "READY"` (poll `get_harness`)
+5. `invoke_harness(harnessArn=..., runtimeSessionId=..., messages=[...])` on the **runtime** client
 
-**Workaround:** Create agent runtime via AWS Console, then use boto3 for `invoke_agent_runtime`.
+**Note:** `create_agent_runtime` / `invoke_agent_runtime` exist but are for the *code-artifact* runtime (your own app code in S3/container). For the managed ReAct harness, always use `create_harness` / `invoke_harness`.
 
 ## Recommendations
 
 ### For Learning
 
-1. **Use AWS Console** for initial setup — easier to understand the flow
-2. **Use boto3 for runtime** — `invoke_agent_runtime` is stable
-3. **Document API changes** — the API is evolving rapidly
+1. **Use `create_harness` / `invoke_harness`** — the managed ReAct harness, no code packaging needed
+2. **Reference Gateway ARN in tools**, not inline schemas (schemas live on the Target)
+3. **Document the two services** — AgentCore (Harness) vs Agents (Classic) use different clients
 
 ### For Production
 
-1. **Pin boto3 version** — avoid breaking changes
+1. **Pin boto3 version** — AgentCore is actively developed; shapes can shift
 2. **Use CloudFormation/SAM** — infrastructure as code is more reliable
-3. **Monitor AWS announcements** — AgentCore is actively developed
+3. **Monitor AWS announcements** — AgentCore adds capabilities (browser, code interpreter, memory) regularly
 
-## Alternative Approach: AWS Console
+## Alternative: AWS Console
 
-Given the API changes, consider using the AWS Console for setup:
+For a visual walkthrough:
 
-1. Go to **Bedrock → AgentCore → Gateways**
-2. Create a gateway with MCP protocol
-3. Add targets (Lambda functions)
-4. Create an agent runtime
-5. Test with the console playground
+1. Go to **Bedrock → AgentCore → Gateways** → create gateway (MCP)
+2. Add targets (Lambda functions) with `GATEWAY_IAM_ROLE` credential
+3. Go to **AgentCore → Harnesses** → create harness (model + system prompt + gateway tools)
+4. Test in the console playground
 
-Then use boto3 for runtime operations:
+Then use boto3 for runtime:
 
 ```python
 bedrock = boto3.client("bedrock-agentcore", region_name="us-east-1")
 
-response = bedrock.invoke_agent_runtime(
-    agentRuntimeId="your-harness-id",
-    sessionId="your-session-id",
-    messages=[{"role": "user", "content": "Hello"}]
+response = bedrock.invoke_harness(
+    harnessArn="arn:aws:bedrock-agentcore:us-east-1:123456789012:harness/demo3-harness/...",
+    runtimeSessionId="session-1234567890123456789abc",
+    messages=[{"role": "user", "content": [{"text": "Hello"}]}]
 )
 ```
 
