@@ -30,10 +30,10 @@ def chat(user_message, session_id=None, debug=False):
     print(f"User: {user_message}\n")
 
     try:
-        response = bedrock.invoke_agent_runtime(
-            agentRuntimeId=config["harness_id"],
-            sessionId=session_id,
-            messages=[{"role": "user", "content": user_message}]
+        response = bedrock.invoke_harness(
+            harnessArn=config["harness_arn"],
+            runtimeSessionId=session_id,
+            messages=[{"role": "user", "content": [{"text": user_message}]}]
         )
 
         full_response = []

@@ -30,7 +30,7 @@ WEATHER_TARGET = "weather"
 ATTRACTIONS_TARGET = "attractions"
 WEATHER_LAMBDA = "demo3-get-weather"
 ATTRACTIONS_LAMBDA = "demo3-get-top-attractions"
-HARNESS_NAME = "demo3-harness"
+HARNESS_NAME = "demo3_harness_v2"
 
 iam = boto3.client("iam", region_name=REGION)
 lambda_client = boto3.client("lambda", region_name=REGION)
@@ -216,6 +216,70 @@ def create_gateway(role_arn, weather_arn, attractions_arn):
 
     return gateway_id
 
+def get_gateway_arn(gateway_id):
+    gateway = bedrock_control.get_gateway(gatewayIdentifier=gateway_id)
+    return gateway["gatewayArn"]
+
+def create_harness(gateway_id, role_arn):
+    gateway_arn = get_gateway_arn(gateway_id)
+
+    tools = [
+        {
+            "type": "agentcore_gateway",
+            "name": "weather___get_weather",
+            "config": {
+                "agentCoreGateway": {
+                    "gatewayArn": gateway_arn,
+                    "outboundAuth": {"none": {}}
+                }
+            }
+        },
+        {
+            "type": "agentcore_gateway",
+            "name": "attractions___get_top_attractions",
+            "config": {
+                "agentCoreGateway": {
+                    "gatewayArn": gateway_arn,
+                    "outboundAuth": {"none": {}}
+                }
+            }
+        }
+    ]
+
+    try:
+        harness = bedrock_control.create_harness(
+            harnessName=HARNESS_NAME,
+            executionRoleArn=role_arn,
+            model={"bedrockModelConfig": {"modelId": MODEL_ID}},
+            systemPrompt=[{"text": SYSTEM_PROMPT}],
+            tools=tools
+        )
+        harness_id = harness["harness"]["harnessId"]
+        harness_arn = harness["harness"]["arn"]
+        print(f"Created harness: {harness_arn}")
+    except Exception as e:
+        if "already exists" in str(e).lower():
+            harnesses = bedrock_control.list_harnesses()
+            existing = next(h for h in harnesses.get("items", []) if h["harnessName"] == HARNESS_NAME)
+            harness_id = existing["harnessId"]
+            harness_arn = existing["arn"]
+            print(f"Harness already exists: {harness_arn}")
+        else:
+            raise
+
+    print("Waiting for harness to reach READY status...")
+    for i in range(30):
+        status = bedrock_control.get_harness(harnessId=harness_id)
+        if status.get("harness", {}).get("status") == "READY":
+            print("Harness is READY")
+            break
+        print(f"  Status: {status.get('harness', {}).get('status')}... waiting")
+        time.sleep(10)
+    else:
+        print("Harness did not reach READY in time")
+
+    return harness_arn
+
 def main():
     print("=== AgentCore Harness Demo Setup ===\n")
 
@@ -232,37 +296,29 @@ def main():
     gateway_id = create_gateway(role_arn, weather_arn, attractions_arn)
     print()
 
+    print("4. Creating harness...")
+    harness_arn = create_harness(gateway_id, role_arn)
+    print()
+
     config = {
+        "harness_arn": harness_arn,
         "gateway_id": gateway_id,
         "role_arn": role_arn,
         "weather_lambda_arn": weather_arn,
         "attractions_lambda_arn": attractions_arn,
         "region": REGION,
-        "model": MODEL_ID,
-        "harness_id": "UPDATE_AFTER_CONSOLE_CREATION"
+        "model": MODEL_ID
     }
-    
+
     with open("demo_config.json", "w") as f:
         json.dump(config, f, indent=2)
     print("Saved demo_config.json")
 
     print("\n" + "="*60)
-    print("PARTIAL SETUP COMPLETE")
+    print("SETUP COMPLETE")
     print("="*60)
-    print("\nThe AgentCore API now requires S3 code storage for agent runtimes.")
-    print("Please create the agent runtime manually in the AWS Console:\n")
-    print("1. Go to Bedrock -> AgentCore -> Agent Runtimes")
-    print("2. Click 'Create agent runtime'")
-    print(f"3. Name: {HARNESS_NAME}")
-    print(f"4. Model: {MODEL_ID}")
-    print("5. Paste this system prompt:")
-    print("   " + SYSTEM_PROMPT.replace("\n", "\n   "))
-    print("6. Add tools:")
-    print("   - weather___get_weather")
-    print("   - attractions___get_top_attractions")
-    print(f"7. IAM Role: {role_arn}")
-    print("8. After creation, update demo_config.json with the harness_id")
-    print("9. Then run: python chat.py")
+    print(f"\nHarness ARN: {harness_arn}")
+    print(f"Run: python chat.py \"I'll be in London this Saturday with my family. What should we do?\"")
 
 if __name__ == "__main__":
     main()

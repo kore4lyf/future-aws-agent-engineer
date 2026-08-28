@@ -175,8 +175,11 @@ harness_arn = harness["harnessArn"]
 **Key shape notes (verified from the boto3 service model):**
 - `model` is a structure with `bedrockModelConfig.modelId` (not a flat `modelId`)
 - `systemPrompt` is a **list** of `{text: ...}`, not a plain string
-- `tools[].type` must be `"agentCoreGateway"` and the tool config references the **Gateway ARN** (`agentCoreGateway.gatewayArn`). The tool name still uses the `target___tool` namespacing.
+- `tools[].type` must be `"agentcore_gateway"` (snake_case enum; allowed values: `remote_mcp`, `agentcore_code_interpreter`, `agentcore_gateway`, `agentcore_browser`, `inline_function`). The tool config references the **Gateway ARN** (`agentCoreGateway.gatewayArn`). The tool name still uses the `target___tool` namespacing.
 - Gateway ARN is obtained from `get_gateway(gatewayIdentifier=...)` → `gatewayArn` (note: `list_gateways` returns `gatewayId`, but `create_harness` needs the full ARN).
+- `harnessName` must match `^[a-zA-Z][a-zA-Z0-9_]{0,39}$` — **no dashes** (use `demo3_harness`, not `demo3-harness`).
+- `create_harness` response is wrapped: `response["harness"]["harnessId"]` and `response["harness"]["arn"]` (the field is `arn`, not `harnessArn`).
+- `invoke_harness` requires `harnessArn` (use the `arn` value) + `runtimeSessionId` (33–43 chars) + `messages` as `[{role, content:[{text}]}]`.
 
 ### 5. Invoking the Harness — `invoke_harness` (NOT `invoke_agent_runtime`)
 
