@@ -233,9 +233,53 @@ for event in response.get("events", []):
 | Resource | Status |
 |----------|--------|
 | Gateway creation | ✅ Works with new API |
-| Gateway targets | ✅ Works with new API |
-| Agent runtime | ⚠️ Requires S3 code storage |
-| Tool schemas | ⚠️ May need to be defined differently |
+| Gateway targets | ✅ Works with `credentialProviderConfigurations=[{"credentialProviderType": "GATEWAY_IAM_ROLE"}]` |
+| Agent runtime | ❌ Requires S3 code storage (cannot create via simple boto3 call) |
+| Bedrock Agents (classic) | ❌ In maintenance mode, new creation blocked |
+
+### Gateway Target Creation (Working)
+
+```python
+bedrock_control.create_gateway_target(
+    gatewayIdentifier=gateway_id,
+    name="weather",
+    description="Weather lookup tool",
+    credentialProviderConfigurations=[
+        {"credentialProviderType": "GATEWAY_IAM_ROLE"}
+    ],
+    targetConfiguration={
+        "mcp": {
+            "lambda": {
+                "lambdaArn": lambda_arn,
+                "toolSchema": {
+                    "inlinePayload": [
+                        {
+                            "name": "get_weather",
+                            "description": "Get weather for a city",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "city": {"type": "string"}
+                                },
+                                "required": ["city"]
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+    }
+)
+```
+
+### Agent Runtime (Requires Console)
+
+The `create_agent_runtime` API now requires:
+- `agentRuntimeName`
+- `agentRuntimeArtifact` with S3 code storage
+- `roleArn`
+
+**Workaround:** Create agent runtime via AWS Console, then use boto3 for `invoke_agent_runtime`.
 
 ## Recommendations
 

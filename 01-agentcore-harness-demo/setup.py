@@ -34,7 +34,6 @@ HARNESS_NAME = "demo3-harness"
 
 iam = boto3.client("iam", region_name=REGION)
 lambda_client = boto3.client("lambda", region_name=REGION)
-bedrock = boto3.client("bedrock-agentcore", region_name=REGION)
 bedrock_control = boto3.client("bedrock-agentcore-control", region_name=REGION)
 
 def create_iam_role():
@@ -136,14 +135,39 @@ def create_gateway(role_arn, weather_arn, attractions_arn):
         else:
             raise
 
+    credential_config = [
+        {
+            "credentialProviderType": "GATEWAY_IAM_ROLE"
+        }
+    ]
+
     try:
         bedrock_control.create_gateway_target(
             gatewayIdentifier=gateway_id,
             name=WEATHER_TARGET,
             description="Weather lookup tool",
+            credentialProviderConfigurations=credential_config,
             targetConfiguration={
-                "lambda": {
-                    "lambdaArn": weather_arn
+                "mcp": {
+                    "lambda": {
+                        "lambdaArn": weather_arn,
+                        "toolSchema": {
+                            "inlinePayload": [
+                                {
+                                    "name": "get_weather",
+                                    "description": "Get current weather for a city on a specific date",
+                                    "inputSchema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "city": {"type": "string", "description": "The city name"},
+                                            "date": {"type": "string", "description": "The date in YYYY-MM-DD format"}
+                                        },
+                                        "required": ["city", "date"]
+                                    }
+                                }
+                            ]
+                        }
+                    }
                 }
             }
         )
@@ -159,9 +183,27 @@ def create_gateway(role_arn, weather_arn, attractions_arn):
             gatewayIdentifier=gateway_id,
             name=ATTRACTIONS_TARGET,
             description="Top attractions lookup tool",
+            credentialProviderConfigurations=credential_config,
             targetConfiguration={
-                "lambda": {
-                    "lambdaArn": attractions_arn
+                "mcp": {
+                    "lambda": {
+                        "lambdaArn": attractions_arn,
+                        "toolSchema": {
+                            "inlinePayload": [
+                                {
+                                    "name": "get_top_attractions",
+                                    "description": "Get top attractions for a city",
+                                    "inputSchema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "city": {"type": "string", "description": "The city name"}
+                                        },
+                                        "required": ["city"]
+                                    }
+                                }
+                            ]
+                        }
+                    }
                 }
             }
         )
@@ -173,74 +215,6 @@ def create_gateway(role_arn, weather_arn, attractions_arn):
             print(f"Attractions target note: {e}")
 
     return gateway_id
-
-def create_harness(gateway_id, role_arn):
-    import datetime
-    today = datetime.date.today().isoformat()
-    full_prompt = SYSTEM_PROMPT + f"\nToday's date is {today}."
-
-    tools = [
-        {
-            "name": "weather___get_weather",
-            "description": "Get current weather for a city on a specific date",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "city": {"type": "string", "description": "The city name"},
-                    "date": {"type": "string", "description": "The date in YYYY-MM-DD format"}
-                },
-                "required": ["city", "date"]
-            }
-        },
-        {
-            "name": "attractions___get_top_attractions",
-            "description": "Get top attractions for a city",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "city": {"type": "string", "description": "The city name"}
-                },
-                "required": ["city"]
-            }
-        }
-    ]
-
-    try:
-        harness = bedrock_control.create_agent_runtime(
-            name=HARNESS_NAME,
-            description="Demo travel assistant harness",
-            modelId=MODEL_ID,
-            instructionPrompt=full_prompt,
-            tools=tools,
-            roleArn=role_arn
-        )
-        harness_id = harness["agentRuntimeId"]
-        print(f"Created harness: {harness_id}")
-    except Exception as e:
-        if "already exists" in str(e).lower():
-            harnesses = bedrock_control.list_agent_runtimes()
-            harness_id = next(h["agentRuntimeId"] for h in harnesses.get("items", []) if h["name"] == HARNESS_NAME)
-            print(f"Harness already exists: {harness_id}")
-        else:
-            raise
-
-    print("Waiting for harness to reach READY status...")
-    for i in range(30):
-        status = bedrock_control.get_agent_runtime(agentRuntimeId=harness_id)
-        if status.get("status") == "READY":
-            print(f"Harness is READY")
-            break
-        print(f"  Status: {status.get('status')}... waiting")
-        time.sleep(10)
-    else:
-        print("Harness did not reach READY in time")
-
-    return harness_id
-
-def save_config(config):
-    with open("demo_config.json", "w") as f:
-        json.dump(config, f, indent=2)
-    print("Saved demo_config.json")
 
 def main():
     print("=== AgentCore Harness Demo Setup ===\n")
@@ -258,24 +232,37 @@ def main():
     gateway_id = create_gateway(role_arn, weather_arn, attractions_arn)
     print()
 
-    print("4. Creating harness...")
-    harness_id = create_harness(gateway_id, role_arn)
-    print()
-
     config = {
-        "harness_id": harness_id,
         "gateway_id": gateway_id,
         "role_arn": role_arn,
         "weather_lambda_arn": weather_arn,
         "attractions_lambda_arn": attractions_arn,
         "region": REGION,
-        "model": MODEL_ID
+        "model": MODEL_ID,
+        "harness_id": "UPDATE_AFTER_CONSOLE_CREATION"
     }
-    save_config(config)
+    
+    with open("demo_config.json", "w") as f:
+        json.dump(config, f, indent=2)
+    print("Saved demo_config.json")
 
-    print("\n=== Setup Complete ===")
-    print(f"Harness ID: {harness_id}")
-    print(f"Run: python chat.py \"I'll be in London this Saturday with my family. What should we do?\"")
+    print("\n" + "="*60)
+    print("PARTIAL SETUP COMPLETE")
+    print("="*60)
+    print("\nThe AgentCore API now requires S3 code storage for agent runtimes.")
+    print("Please create the agent runtime manually in the AWS Console:\n")
+    print("1. Go to Bedrock -> AgentCore -> Agent Runtimes")
+    print("2. Click 'Create agent runtime'")
+    print(f"3. Name: {HARNESS_NAME}")
+    print(f"4. Model: {MODEL_ID}")
+    print("5. Paste this system prompt:")
+    print("   " + SYSTEM_PROMPT.replace("\n", "\n   "))
+    print("6. Add tools:")
+    print("   - weather___get_weather")
+    print("   - attractions___get_top_attractions")
+    print(f"7. IAM Role: {role_arn}")
+    print("8. After creation, update demo_config.json with the harness_id")
+    print("9. Then run: python chat.py")
 
 if __name__ == "__main__":
     main()
