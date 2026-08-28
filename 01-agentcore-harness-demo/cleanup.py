@@ -1,6 +1,13 @@
+from dotenv import load_dotenv
+import os
+from pathlib import Path
+
+# Load from root .env (one level up from this folder)
+root_dir = Path(__file__).parent.parent
+load_dotenv(root_dir / ".env")
+
 import boto3
 import json
-import os
 
 def load_config():
     if not os.path.exists("demo_config.json"):
@@ -16,6 +23,7 @@ def cleanup():
 
     region = config["region"]
     bedrock = boto3.client("bedrock-agentcore", region_name=region)
+    bedrock_control = boto3.client("bedrock-agentcore-control", region_name=region)
     lambda_client = boto3.client("lambda", region_name=region)
     iam = boto3.client("iam", region_name=region)
 
@@ -30,7 +38,7 @@ def cleanup():
 
     # Delete gateway
     try:
-        bedrock.delete_gateway(gatewayId=config["gateway_id"])
+        bedrock_control.delete_gateway(gatewayId=config["gateway_id"])
         print(f"Deleted gateway: {config['gateway_id']}")
     except Exception as e:
         print(f"Gateway deletion note: {e}")

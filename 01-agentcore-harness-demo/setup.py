@@ -1,3 +1,11 @@
+from dotenv import load_dotenv
+import os
+from pathlib import Path
+
+# Load from root .env (one level up from this folder)
+root_dir = Path(__file__).parent.parent
+load_dotenv(root_dir / ".env")
+
 SYSTEM_PROMPT = """You are a Helpful Home AI travel assistant. You help users plan trips and find things to do.
 
 RULES:
@@ -12,10 +20,10 @@ RULES:
 import boto3
 import json
 import time
-import os
 
-REGION = "us-east-1"
-ACCOUNT_ID = boto3.client("sts").get_caller_identity()["Account"]
+REGION = os.getenv("AWS_REGION", "us-east-1")
+MODEL_ID = os.getenv("MODEL_ID", "amazon.nova-lite-v1:0")
+ACCOUNT_ID = boto3.client("sts", region_name=REGION).get_caller_identity()["Account"]
 ROLE_NAME = "demo3-agentcore-harness-role"
 GATEWAY_NAME = "demo3-gateway"
 WEATHER_TARGET = "weather"
@@ -23,11 +31,11 @@ ATTRACTIONS_TARGET = "attractions"
 WEATHER_LAMBDA = "demo3-get-weather"
 ATTRACTIONS_LAMBDA = "demo3-get-top-attractions"
 HARNESS_NAME = "demo3-harness"
-MODEL_ID = "amazon.nova-pro-v1:0"
 
 iam = boto3.client("iam", region_name=REGION)
 lambda_client = boto3.client("lambda", region_name=REGION)
 bedrock = boto3.client("bedrock-agentcore", region_name=REGION)
+bedrock_control = boto3.client("bedrock-agentcore-control", region_name=REGION)
 
 def create_iam_role():
     trust_policy = {
@@ -35,7 +43,9 @@ def create_iam_role():
         "Statement": [
             {
                 "Effect": "Allow",
-                "Principal": {"Service": "bedrock-agentcore.amazonaws.com"},
+                "Principal": {
+                    "Service": ["bedrock-agentcore.amazonaws.com", "lambda.amazonaws.com"]
+                },
                 "Action": "sts:AssumeRole"
             }
         ]
@@ -109,48 +119,33 @@ def create_lambda(function_name, handler_file):
 
 def create_gateway(role_arn, weather_arn, attractions_arn):
     try:
-        gateway = bedrock.create_gateway(
-            gatewayName=GATEWAY_NAME,
+        gateway = bedrock_control.create_gateway(
+            name=GATEWAY_NAME,
             roleArn=role_arn,
+            authorizerType="NONE",
+            protocolType="MCP",
             description="Demo gateway for weather and attractions tools"
         )
         gateway_id = gateway["gatewayId"]
         print(f"Created Gateway: {gateway_id}")
     except Exception as e:
         if "already exists" in str(e).lower():
-            gateways = bedrock.list_gateways()
-            gateway_id = next(g["gatewayId"] for g in gateways.get("items", []) if g["gatewayName"] == GATEWAY_NAME)
+            gateways = bedrock_control.list_gateways()
+            gateway_id = next(g["gatewayId"] for g in gateways.get("items", []) if g["name"] == GATEWAY_NAME)
             print(f"Gateway already exists: {gateway_id}")
         else:
             raise
 
     try:
-        bedrock.create_gateway_target(
-            gatewayId=gateway_id,
-            targetName=WEATHER_TARGET,
-            targetDescription="Weather lookup tool",
-            targetUri=weather_arn,
-            protocolType="MCP",
-            toolSchema=[
-                {
-                    "name": "get_weather",
-                    "description": "Get current weather for a city on a specific date",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "city": {
-                                "type": "string",
-                                "description": "The city name"
-                            },
-                            "date": {
-                                "type": "string",
-                                "description": "The date in YYYY-MM-DD format"
-                            }
-                        },
-                        "required": ["city", "date"]
-                    }
+        bedrock_control.create_gateway_target(
+            gatewayIdentifier=gateway_id,
+            name=WEATHER_TARGET,
+            description="Weather lookup tool",
+            targetConfiguration={
+                "lambda": {
+                    "lambdaArn": weather_arn
                 }
-            ]
+            }
         )
         print(f"Created weather target")
     except Exception as e:
@@ -160,28 +155,15 @@ def create_gateway(role_arn, weather_arn, attractions_arn):
             print(f"Weather target note: {e}")
 
     try:
-        bedrock.create_gateway_target(
-            gatewayId=gateway_id,
-            targetName=ATTRACTIONS_TARGET,
-            targetDescription="Top attractions lookup tool",
-            targetUri=attractions_arn,
-            protocolType="MCP",
-            toolSchema=[
-                {
-                    "name": "get_top_attractions",
-                    "description": "Get top attractions for a city",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "city": {
-                                "type": "string",
-                                "description": "The city name"
-                            }
-                        },
-                        "required": ["city"]
-                    }
+        bedrock_control.create_gateway_target(
+            gatewayIdentifier=gateway_id,
+            name=ATTRACTIONS_TARGET,
+            description="Top attractions lookup tool",
+            targetConfiguration={
+                "lambda": {
+                    "lambdaArn": attractions_arn
                 }
-            ]
+            }
         )
         print(f"Created attractions target")
     except Exception as e:
@@ -224,7 +206,7 @@ def create_harness(gateway_id, role_arn):
     ]
 
     try:
-        harness = bedrock.create_agent_runtime(
+        harness = bedrock_control.create_agent_runtime(
             name=HARNESS_NAME,
             description="Demo travel assistant harness",
             modelId=MODEL_ID,
@@ -236,7 +218,7 @@ def create_harness(gateway_id, role_arn):
         print(f"Created harness: {harness_id}")
     except Exception as e:
         if "already exists" in str(e).lower():
-            harnesses = bedrock.list_agent_runtimes()
+            harnesses = bedrock_control.list_agent_runtimes()
             harness_id = next(h["agentRuntimeId"] for h in harnesses.get("items", []) if h["name"] == HARNESS_NAME)
             print(f"Harness already exists: {harness_id}")
         else:
@@ -244,7 +226,7 @@ def create_harness(gateway_id, role_arn):
 
     print("Waiting for harness to reach READY status...")
     for i in range(30):
-        status = bedrock.get_agent_runtime(agentRuntimeId=harness_id)
+        status = bedrock_control.get_agent_runtime(agentRuntimeId=harness_id)
         if status.get("status") == "READY":
             print(f"Harness is READY")
             break

@@ -1,3 +1,11 @@
+from dotenv import load_dotenv
+import os
+from pathlib import Path
+
+# Load from root .env (one level up from this folder)
+root_dir = Path(__file__).parent.parent
+load_dotenv(root_dir / ".env")
+
 import boto3
 import json
 import sys
