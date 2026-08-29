@@ -595,3 +595,59 @@ The 2-tool minimum is a **Console-only** constraint; the boto3 API accepts a 1-e
 | `Member must be a structure` | Pasted raw schema (`{type, properties, ...}`) instead of tool array | Wrap in `[ {...}, {...} ]` with `name` and `description` at the top level of each tool |
 
 **Lesson:** When the Console asks for "inline schema" on an AgentCore Gateway target, paste an **array of at least 2 tool objects**, each with a **unique `name`**, a `description`, and an `inputSchema` object. Do not paste a JSON Schema object.
+
+---
+
+## ⚠️ AgentCore Console — Harnesses vs Gateways (Aug 2026)
+
+The AgentCore console has **separate tabs** for different resource types. A common confusion:
+
+### Console Tabs
+
+| Tab | Resource Type | Naming Convention | What You See |
+|-----|---------------|-------------------|--------------|
+| **Harnesses** | AgentCore Harness | Custom names (e.g., `incident_coordinator_abc123`, `demo3_harness_v2`) | The actual agent runtimes |
+| **Gateways** | AgentCore Gateway | `agentcore-gateway-*` (auto-generated) | MCP endpoints for tools |
+| **Targets** | Gateway Target | N/A (nested under Gateway) | Lambda/API tool definitions |
+
+### Why "agentcore-runtime" entries appear in Gateways
+
+The entries you see named `agentcore-runtime-*` in the screenshot are **Gateways**, not Harnesses. The console auto-generates these names when you create a Gateway via boto3 or the Console UI. They appear under the **Gateways** tab, not the Harnesses tab.
+
+### Finding your Harness
+
+1. Go to **Bedrock → AgentCore → Harnesses** (NOT the Gateways tab)
+2. Look for your custom harness name (e.g., `incident_coordinator_abc123`)
+3. If you ran `cleanup.py`, the harness has been **deleted** and won't appear
+
+### Why `incident_coordinator_*` doesn't appear
+
+The `incident_coordinator_*` harness was:
+1. Created by `setup.py` (verified: harness ID `incident_coordinator_4330a9ea-aQkikymvjz`)
+2. Successfully tested with `chat.py` (verified: 2 test cases passed)
+3. **Deleted by `cleanup.py`** (verified: "Deleted harness: incident_coordinator_4330a9ea-aQkikymvjz")
+
+To recreate it:
+```bash
+cd 05-flows-feedback-loops/exercises/concept1-incident-report-loop/starter
+python setup.py
+python chat.py
+```
+
+### Current Harnesses in this Account (as of Aug 2026)
+
+| Harness Name | Status | Source |
+|--------------|--------|--------|
+| `customer_support_chatbot-tStOhrWK0q` | READY | Demo |
+| `demo3_harness-Adem38Exzb` | READY | Demo |
+| `demo3_harness_v2-dWPYaphL0H` | READY | Demo |
+| `demo_travel_harness-ZvMmhDm55g` | READY | Demo |
+| `incident_coordinator_*` | DELETED | Cleaned up by `cleanup.py` |
+
+### Key Takeaway
+
+- **Harnesses** = agent runtimes (your actual agents)
+- **Gateways** = MCP endpoints (tool infrastructure)
+- The console auto-names Gateways as `agentcore-gateway-*` or `agentcore-runtime-*`
+- Harnesses keep the name you give them in `create_harness(harnessName=...)`
+- Running `cleanup.py` permanently deletes the harness
