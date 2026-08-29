@@ -475,12 +475,123 @@ Returns hardcoded attractions data for London, Paris, and New York.
 ```python
 def lambda_handler(event, context):
     city = event.get("city", "Unknown")
-    
+
     attractions_data = {
         "London": {"attractions": [{"name": "British Museum", ...}, ...]},
         "Paris": {"attractions": [{"name": "Louvre Museum", ...}, ...]},
         "New York": {"attractions": [{"name": "Central Park", ...}, ...]}
     }
-    
+
     return attractions_data.get(city, {"attractions": []})
 ```
+
+---
+
+## ⚠️ AgentCore Gateway Console — Schema Gotchas (Aug 2026)
+
+When creating a Gateway target via the AWS Console, the "In-line schema editor" rejects single-object and duplicate entries. This bit us while deploying the demo from the UI. Capture for next time.
+
+### 1. Must be an **array** of 2+ tool objects — not a single object
+
+The JSON Schema spec defines an object as `{...}`. The Console's inline editor expects a JSON **array** of tool definitions, **and the array must contain at least 2 entries** — otherwise the API returns:
+
+```
+ValidationException: Value at
+'targetConfiguration.mcp.lambda.toolSchema.inlinePayload.1.member.inputSchema'
+failed to satisfy constraint: Member must not be null
+```
+
+(The `1.member` path means "the second entry in the array, which is null/missing.")
+
+**WRONG (single object):**
+
+```json
+{
+  "type": "object",
+  "properties": { "city": {"type": "string"} },
+  "required": ["city"]
+}
+```
+
+**CORRECT (array of 2 tools):**
+
+```json
+[
+  { "name": "get_weather", "description": "...", "inputSchema": { "type": "object", "properties": {...}, "required": [...] } },
+  { "name": "get_weather_secondary", "description": "duplicate to satisfy UI", "inputSchema": { ... } }
+]
+```
+
+Note each tool is `{name, description, inputSchema}` — **not** `{type, properties, required}`. The `type/properties/required` go **inside** `inputSchema`.
+
+### 2. Tool names within a target must be **unique**
+
+The API rejects `Duplicate tool found in target configuration: <name>`. So the second placeholder must use a distinct name (e.g. `<tool>_secondary` or `<tool>_dup`).
+
+### 3. Confirmed working shape (single-tool target via Console)
+
+```json
+[
+  {
+    "name": "get_weather",
+    "description": "Get current weather for a city on a specific date",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "city": {"type": "string", "description": "The city name"},
+        "date": {"type": "string", "description": "The date in YYYY-MM-DD format"}
+      },
+      "required": ["city", "date"]
+    }
+  },
+  {
+    "name": "get_weather_secondary",
+    "description": "Placeholder; satisfies Console's 2-tool minimum",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "city": {"type": "string", "description": "The city name"},
+        "date": {"type": "string", "description": "The date in YYYY-MM-DD format"}
+      },
+      "required": ["city", "date"]
+    }
+  }
+]
+```
+
+The placeholder tool is never invoked at runtime — only the first one is referenced from the Harness via the Gateway's `agentcore_gateway` tool config.
+
+### 4. How to avoid this in code (boto3)
+
+When calling `create_gateway_target` programmatically (as `setup.py` does), pass a single tool in `inlinePayload`:
+
+```python
+targetConfiguration = {
+    "mcp": {
+        "lambda": {
+            "lambdaArn": lambda_arn,
+            "toolSchema": {
+                "inlinePayload": [
+                    {
+                        "name": "get_weather",
+                        "description": "Get current weather for a city on a specific date",
+                        "inputSchema": {"type": "object", "properties": {...}, "required": [...]}
+                    }
+                ]
+            }
+        }
+    }
+}
+```
+
+The 2-tool minimum is a **Console-only** constraint; the boto3 API accepts a 1-element array.
+
+### 5. Symptom → fix cheat sheet
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `inlinePayload.1.member.* Member must not be null` | Only 1 tool in array | Add a second tool object (with a unique name) |
+| `Duplicate tool found in target configuration: <name>` | Second tool reused first tool's name | Give it a unique name like `<tool>_secondary` |
+| `Member must be a structure` | Pasted raw schema (`{type, properties, ...}`) instead of tool array | Wrap in `[ {...}, {...} ]` with `name` and `description` at the top level of each tool |
+
+**Lesson:** When the Console asks for "inline schema" on an AgentCore Gateway target, paste an **array of at least 2 tool objects**, each with a **unique `name`**, a `description`, and an `inputSchema` object. Do not paste a JSON Schema object.
