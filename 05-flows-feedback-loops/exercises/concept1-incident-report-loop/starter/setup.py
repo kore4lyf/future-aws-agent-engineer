@@ -3,17 +3,20 @@ import json
 import time
 import os
 import uuid
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+root_dir = Path(__file__).parent.parent.parent.parent.parent
+load_dotenv(root_dir / ".env")
 
 # ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
 bedrock = boto3.client("bedrock-agentcore", region_name="us-east-1")
+bedrock_control = boto3.client("bedrock-agentcore-control", region_name="us-east-1")
 iam = boto3.client("iam", region_name="us-east-1")
 
-MODEL_ID = "amazon.nova-pro-v1:0"
+MODEL_ID = os.getenv("MODEL_ID", "amazon.nova-pro-v1:0")
 
 # ---------------------------------------------------------------------------
 # SYSTEM_PROMPT — Write your incident report coordinator prompt here
@@ -81,49 +84,78 @@ def create_iam_role():
         ]
     }
 
-    role = iam.create_role(
-        RoleName=role_name,
-        AssumeRolePolicyDocument=json.dumps(trust_policy),
-        Description="Role for incident report coordinator harness"
-    )
+    try:
+        role = iam.create_role(
+            RoleName=role_name,
+            AssumeRolePolicyDocument=json.dumps(trust_policy),
+            Description="Role for incident report coordinator harness"
+        )
+        role_arn = role["Role"]["Arn"]
+    except iam.exceptions.EntityAlreadyExistsException:
+        role = iam.get_role(RoleName=role_name)
+        role_arn = role["Role"]["Arn"]
+
+    # Grant the role permissions needed by the harness
+    policy_document = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": "bedrock-agentcore:*",
+                "Resource": "*"
+            },
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "bedrock:InvokeModel",
+                    "bedrock:InvokeModelWithResponseStream"
+                ],
+                "Resource": "arn:aws:bedrock:*::foundation-model/*"
+            }
+        ]
+    }
+
+    try:
+        iam.put_role_policy(
+            RoleName=role_name,
+            PolicyName="incident-coordinator-policy",
+            PolicyDocument=json.dumps(policy_document)
+        )
+    except Exception as e:
+        print(f"Policy update note: {e}")
 
     print(f"Created IAM role {role_name}")
-    return role["Role"]["Arn"]
+    return role_arn
 
 
 # ---------------------------------------------------------------------------
 # Create harness
 # ---------------------------------------------------------------------------
 def create_harness(role_arn):
-    harness_name = f"incident-coordinator-{uuid.uuid4().hex[:8]}"
+    harness_name = f"incident_coordinator_{uuid.uuid4().hex[:8]}"
 
     try:
-        harness = bedrock.create_agent_runtime(
-            name=harness_name,
-            description="Incident report coordinator with feedback loop",
-            modelId=MODEL_ID,
-            instructionPrompt=SYSTEM_PROMPT,
-            roleArn=role_arn,
-            inferenceConfig={
-                "temperature": 0.0,
-                "topK": 1
-            },
+        harness = bedrock_control.create_harness(
+            harnessName=harness_name,
+            executionRoleArn=role_arn,
+            model={"bedrockModelConfig": {"modelId": MODEL_ID}},
+            systemPrompt=[{"text": SYSTEM_PROMPT}],
             memory={"disabled": {}}
         )
-        harness_id = harness["agentRuntimeId"]
-        harness_arn = harness.get("agentRuntimeArn", f"arn:aws:bedrock-agentcore:us-east-1:{boto3.client('sts').get_caller_identity()['Account']}:agent-runtime/{harness_id}")
-        print(f"Created harness: {harness_id}")
+        harness_id = harness["harness"]["harnessId"]
+        harness_arn = harness["harness"]["arn"]
+        print(f"Created harness: {harness_arn}")
     except Exception as e:
         print(f"Error creating harness: {e}")
         return None, None
 
     print("Waiting for harness to reach READY status...")
     for i in range(30):
-        status = bedrock.get_agent_runtime(agentRuntimeId=harness_id)
-        if status.get("status") == "READY":
-            print(f"Harness is READY")
+        status = bedrock_control.get_harness(harnessId=harness_id)
+        if status.get("harness", {}).get("status") == "READY":
+            print("Harness is READY")
             break
-        print(f"  Status: {status.get('status')}... waiting")
+        print(f"  Status: {status.get('harness', {}).get('status')}... waiting")
         time.sleep(10)
     else:
         print("Harness did not reach READY in time")
@@ -142,9 +174,8 @@ def create_harness(role_arn):
 if __name__ == "__main__":
     print("=== Incident Report Coordinator Setup ===\n")
 
-    print("1. Creating IAM role...")
-    role_arn = create_iam_role()
-    print()
+    role_arn = "arn:aws:iam::708026873259:role/AmazonBedrockExecutionRoleForFlows"
+    print(f"Using existing role: {role_arn}")
 
     print("2. Creating harness...")
     harness_id, harness_arn = create_harness(role_arn)

@@ -2,9 +2,11 @@ import boto3
 import json
 import sys
 import uuid
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+root_dir = Path(__file__).parent.parent.parent.parent.parent
+load_dotenv(root_dir / ".env")
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -24,21 +26,22 @@ def load_harness_arn():
 def invoke_harness(harness_arn, session_id, user_message):
     """Invoke the harness and return the response."""
     try:
-        response = bedrock.invoke_agent_runtime(
-            agentRuntimeArn=harness_arn,
-            sessionId=session_id,
-            messages=[{"role": "user", "content": user_message}]
+        response = bedrock.invoke_harness(
+            harnessArn=harness_arn,
+            runtimeSessionId=session_id,
+            messages=[{"role": "user", "content": [{"text": user_message}]}]
         )
 
         full_response = []
-        for event in response.get("events", []):
-            if "chunk" in event:
-                chunk = event["chunk"]
-                if "bytes" in chunk:
-                    text = chunk["bytes"].decode("utf-8")
-                    # Hide thinking tags
-                    if "<thinking>" not in text and "</thinking>" not in text:
-                        full_response.append(text)
+        stream = response.get("stream", [])
+        for event in stream:
+            for key, value in event.items():
+                if key == "contentBlockDelta":
+                    delta = value.get("delta", {})
+                    if "text" in delta:
+                        text = delta["text"]
+                        if "<thinking>" not in text and "</thinking>" not in text:
+                            full_response.append(text)
 
         return "".join(full_response)
 

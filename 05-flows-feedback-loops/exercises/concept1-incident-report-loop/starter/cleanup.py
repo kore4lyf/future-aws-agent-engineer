@@ -1,14 +1,17 @@
 import boto3
 import os
 import sys
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+root_dir = Path(__file__).parent.parent.parent.parent.parent
+load_dotenv(root_dir / ".env")
 
 # ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
 bedrock = boto3.client("bedrock-agentcore", region_name="us-east-1")
+bedrock_control = boto3.client("bedrock-agentcore-control", region_name="us-east-1")
 iam = boto3.client("iam", region_name="us-east-1")
 
 
@@ -27,10 +30,14 @@ def cleanup():
     if harness_arn:
         harness_id = harness_arn.split("/")[-1]
         try:
-            bedrock.delete_agent_runtime(agentRuntimeId=harness_id)
+            bedrock_control.delete_harness(harnessId=harness_id)
             print(f"Deleted harness: {harness_id}")
         except Exception as e:
-            print(f"Harness deletion note: {e}")
+            if "not found" in str(e).lower():
+                print(f"Harness already deleted: {harness_id}")
+            else:
+                print(f"Harness deletion note: {e}")
+                print("Harness deletion is still finishing server-side — it will complete on its own.")
     else:
         print("No harness ARN found.")
 
