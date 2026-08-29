@@ -1,127 +1,148 @@
-# Exercise – Incident Report Completion with an Agent Node
+# Exercise – Incident Report Completion
 
 ## Overview
 
-An operations engineer submits an incomplete incident report after a production issue. Your task is to build a Bedrock Flow that reviews the report, identifies what operational details are missing, asks targeted follow-up questions, and generates a finalized report once all required information has been collected.
+An operations engineer submits an incomplete incident report after a production issue. Your task is to build a Bedrock Flow and an AgentCore harness that reviews the report, identifies missing details, asks targeted follow-up questions, and generates a finalized report once all required information has been collected.
 
 ---
 
 ## What You Will Build
 
 ```
-Flow Input (incident_report)
-    │
-    ▼
-[Agent: IncidentReviewAgent]  ←→  asks follow-up questions (multi-turn)
-    │  (when agent has collected all missing details, outputs a formatted report)
-    ▼
-Flow Output
+┌─────────────────────────────────────────────────────┐
+│  OPTION A – Single-shot (Bedrock Flow)              │
+│                                                     │
+│  FlowInput (incident_report)                        │
+│      │                                              │
+│      ▼                                              │
+│  [Prompt node: IncidentCoordinator]                 │
+│      │                                              │
+│      ▼                                              │
+│  FlowOutput                                         │
+│                                                     │
+│  → Test from the Bedrock console                    │
+│  → Foundation for multi-agent pipelines             │
+└─────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────┐
+│  OPTION B – Multi-turn (AgentCore Harness)          │
+│                                                     │
+│  chat.py  ←→  harness (stateful session)            │
+│                                                     │
+│  → Full feedback loop                               │
+│  → Multi-turn conversation                          │
+└─────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Task 1 – Create the Bedrock Agent
+## Required Fields
 
-1. Open the [Amazon Bedrock console](https://console.aws.amazon.com/bedrock) and navigate to **Agents**
-2. Click **Create agent** and name it `IncidentReviewAgent`
-3. Under **Agent instructions**, write a prompt that instructs the agent to:
-   - Review the submitted incident report for missing or vague information
-   - Identify gaps across these required fields: affected systems, severity, root cause hypothesis, and impact
-   - Ask targeted follow-up questions — one to three at a time — until all fields are covered
-   - Not fabricate or assume any details
-   - When all fields are collected, output a finalized, structured incident report with clearly labeled fields
+A complete incident report must have all five of these:
 
-> **TODO:** Write the agent instructions.
-
-4. Under **Model**, select **Amazon Nova Pro**
-5. Under **Additional settings**, enable **User input**
-6. Click **Save and prepare** and wait for **Prepared** status
+| Field | Example |
+|-------|---------|
+| Severity | P1 / P2 / P3 / P4 |
+| Affected service | checkout-api (us-east-1) |
+| Impact | ~1,200 failed checkout attempts |
+| Root cause | Load balancer misconfiguration after deploy v2.4.1 |
+| Timeline | Started 14:32 UTC, detected 14:35 UTC, resolved 15:18 UTC |
 
 ---
 
-## Task 2 – Test the Agent in the Console Chat
+## Part 1 – Deploy the Bedrock Flow (Option A)
 
-Before wiring the agent into a flow, verify that it behaves correctly using the built-in test chat.
+The flow gives you a single-shot view of the coordinator prompt. Test it from the Bedrock console or via `test_flow.py`.
 
-1. On the agent detail page, click **Test** to open the chat panel
-2. Click **Prepare** if prompted, then start a new session
+### Setup
 
-### Test 1 – Minimal report
-
-```
-Database went down around 3pm. Fixed it.
+```bash
+python create_flow.py
 ```
 
-Confirm the agent asks focused follow-up questions rather than accepting the report as complete.
+This creates the flow, prepares it, and creates a `latest` alias. The alias ARN is saved to `.env` as `INCIDENT_FLOW_ALIAS_ARN`.
 
-### Test 2 – Partially complete report
+### Test from the console
 
-```
-Incident: API gateway returning 503 errors
-Started at 14:32 UTC, resolved 15:18 UTC
-Affected: checkout service in us-east-1
-Root cause: misconfigured load balancer after deploy at 14:28 UTC
-Action taken: rolled back the deployment
-```
+1. Open the [Bedrock console](https://console.aws.amazon.com/bedrock) → **Flows**
+2. Find `incident-report-flow` → click **Test**
+3. Paste a test message and run
 
-Confirm the agent asks only about what is genuinely missing (severity, impact) and not about fields already provided.
+### Test via script
 
-### Test 3 – Already complete report
-
-```
-Severity: P1
-Affected systems: checkout-api (us-east-1), payment-processor integration
-Timeline: Started 14:32 UTC, detected 14:35 UTC, resolved 15:18 UTC
-Root cause: Load balancer misconfiguration introduced in deploy v2.4.1 at 14:28 UTC
-Impact: ~1,200 failed checkout attempts, estimated $34k in lost transactions
-Remediation: Rolled back to v2.4.0, confirmed 503 rate dropped to zero at 15:18 UTC
+```bash
+python test_flow.py
 ```
 
-Confirm the agent outputs a formatted final report without asking any follow-up questions.
+Runs three test cases:
+1. **Minimal report** — expects a follow-up question
+2. **Partial report** — expects a follow-up question about what's missing
+3. **Complete report** — expects a formatted `FINAL REPORT`
+
+### Clean up
+
+```bash
+python cleanup_flow.py
+```
 
 ---
 
-## Task 3 – Create the Flow
+## Part 2 – Deploy the AgentCore Harness (Option B)
 
-1. Navigate to **Flows** and click **Create flow**
-2. Name it `incident-report-completion` and click **Create**
+The harness runs the full multi-turn feedback loop. It keeps conversation state in a `runtimeSessionId`, so it can ask follow-up questions across multiple turns.
 
----
+### Setup
 
-## Task 4 – Configure the Flow Input
+```bash
+python setup.py
+```
 
-The flow takes a single input:
-- `incident_report` (String) — the raw, potentially incomplete report submitted by the engineer
+Creates an IAM role and an AgentCore harness. The harness ARN is saved to `harness_arn.txt`.
 
-Configure the **Flow input** node to expose this single field.
+### Chat
 
----
+```bash
+python chat.py
+```
 
-## Task 5 – Add the Agent Node
+Starts an interactive session. Type your incident report, answer follow-up questions, and the coordinator will output a `FINAL REPORT` once all five fields are covered.
 
-1. Click **+** → **Agent**, name it `IncidentReviewAgent`
-2. Select the `IncidentReviewAgent` you created and its alias
-3. Set the input to `incident_report` (String)
+### Clean up
 
----
-
-## Task 6 – Connect the Nodes
-
-| From | To | What to map |
-|------|----|-------------|
-| Flow input | IncidentReviewAgent | `incident_report` → agent input |
-| IncidentReviewAgent (output) | Flow output | agent response → output |
+```bash
+python cleanup.py
+```
 
 ---
 
-## Task 7 – Prepare and Test
+## Part 3 – Write the Coordinator Prompt
 
-Click **Prepare**, wait for **Prepared** status, then test the flow end-to-end with the inputs from Task 2.
+Both the flow and the harness share the same coordinator prompt (see `setup.py` for the full version). Key rules:
+
+1. **Check all five fields** against what the engineer has told you.
+2. **One question per turn** — ask about the single most important missing field.
+3. **Never re-ask** about fields already covered.
+4. **No fabricating** — only use details the engineer actually provided.
+5. **Output the report** only when all five fields are covered, in this exact format:
+
+```
+FINAL REPORT
+- Severity: [value]
+- Affected service: [value]
+- Impact: [value]
+- Root cause: [value]
+- Timeline: [value]
+```
 
 ---
 
-## Deliverable
+## Files
 
-- Screenshots of the completed flow and the agent node configuration
-- The agent instructions you wrote for `IncidentReviewAgent`
-- An example conversation showing the agent collecting missing details before producing a final report
+| File | Purpose |
+|------|---------|
+| `setup.py` | Creates IAM role + AgentCore harness |
+| `chat.py` | Interactive multi-turn chat with the harness |
+| `cleanup.py` | Deletes harness + IAM roles |
+| `create_flow.py` | Creates the Bedrock Flow |
+| `test_flow.py` | Tests the flow with 3 test cases |
+| `cleanup_flow.py` | Deletes the flow + alias |
