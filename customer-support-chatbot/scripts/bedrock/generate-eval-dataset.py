@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 from dotenv import load_dotenv
 
-root_dir = Path(__file__).parent.parent
+root_dir = Path(__file__).parent.parent.parent
 load_dotenv(root_dir / ".env")
 
 # ---------------------------------------------------------------------------

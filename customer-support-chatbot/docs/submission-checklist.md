@@ -3,32 +3,32 @@
 ## Required Evidence
 
 ### 1. Routing Mechanism
-- [ ] `system_prompt.txt` shows three-category classification (Bug Report / Platform Question / Other)
-- [ ] Category definitions are crisp and unambiguous
-- [ ] Screenshot of routing behavior (chat.py transcript)
+- [x] `system_prompt.txt` shows three-category classification (Bug Report / Platform Question / Other)
+- [x] Category definitions are crisp and unambiguous
+- [x] Screenshot of routing behavior (chat.py transcript) → `screenshots/chat-transcripts/`
 
 ### 2. Bug Report Path
-- [ ] Chatbot collects `description`, `stepsToReproduce`, `environment` across conversation
-- [ ] Chatbot calls `create_bug_report` tool only after all fields collected
-- [ ] Chatbot relays ticket ID to customer
-- [ ] Record created in `bug-report-tool-stack-bug-reports` DynamoDB table
-- [ ] Screenshot of DynamoDB table showing ticket
-- [ ] Screenshot of chat.py transcript showing tool call
+- [x] Chatbot collects `description`, `stepsToReproduce`, `environment` across conversation
+- [x] Chatbot calls `create_bug_report` tool only after all fields collected
+- [x] Chatbot relays ticket ID to customer
+- [x] Record created in `bug-report-tool-stack-bug-reports` DynamoDB table
+- [x] Screenshot of DynamoDB table showing ticket → `screenshots/dynamodb-tickets/`
+- [x] Screenshot of chat.py transcript showing tool call → `screenshots/chat-transcripts/Bug report (multi-turn).png`
 
 ### 3. Platform Question and Other Request Paths
-- [ ] Platform questions answered from `{{FAQ}}` (embedded in prompt)
-- [ ] Uncovered questions redirect to human support
-- [ ] Other requests get polite redirect to support phone line
-- [ ] Screenshots of test responses for covered question, uncovered question, other request
+- [x] Platform questions answered from `{{FAQ}}` (embedded in prompt)
+- [x] Uncovered questions redirect to human support
+- [x] Other requests get polite redirect to support phone line
+- [x] Screenshots of test responses → `screenshots/chat-transcripts/Platform question.png`, `Other request.png`
 
 ### 4. Testing and Evaluation
-- [ ] `harness-tests.json` has tests for all three routes
-- [ ] `generate-eval-dataset.py` produces `output_eval_dataset.jsonl`
-- [ ] JSONL uploaded to S3
-- [ ] Bedrock Evaluation job created
-- [ ] Correctness score close to 1
-- [ ] Screenshot of evaluation results
-- [ ] Written observations on results
+- [x] `harness-tests.json` has tests for all three routes
+- [x] `generate-eval-dataset.py` produces `output_eval_dataset.jsonl`
+- [x] JSONL uploaded to S3 (`s3://customer-support-eval-708026873259/output_eval_dataset.jsonl`)
+- [x] Bedrock Evaluation job created (`support-chatbot-eval-run-3`)
+- [x] Correctness score: **1.0 / 1.0**
+- [x] Screenshot of evaluation results → `screenshots/model-evaluation/`
+- [x] Written observations → `docs/eval-observations.md`
 
 ## Stand-Out Suggestions
 - [ ] Prompt injection hardening

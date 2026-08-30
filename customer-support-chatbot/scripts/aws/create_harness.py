@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-root_dir = Path(__file__).parent.parent
+root_dir = Path(__file__).parent.parent.parent
 load_dotenv(root_dir / ".env")
 
 # ---------------------------------------------------------------------------
@@ -16,7 +16,7 @@ iam = boto3.client("iam", region_name="us-east-1")
 sts = boto3.client("sts", region_name="us-east-1")
 
 MODEL_ID = "us.amazon.nova-pro-v1:0"
-HARNESS_NAME = "customer_support_chatbot"
+HARNESS_NAME = f"customer_support_chatbot_{int(time.time())}"
 TOOL_NAME = "create_bug_report"
 
 
@@ -31,28 +31,12 @@ def load_system_prompt():
 
 def get_harness_role_arn():
     """Get the harness execution role ARN from CloudFormation outputs."""
-    cf = boto3.client("cloudformation", region_name="us-east-1")
-    try:
-        response = cf.describe_stacks(StackName="bug-report-tool-stack")
-        outputs = response["Stacks"][0].get("Outputs", [])
-        for output in outputs:
-            if output["OutputKey"] == "HarnessExecutionRoleArn":
-                return output["OutputValue"]
-    except Exception as e:
-        print(f"Error getting stack outputs: {e}")
-    return None
+    return "arn:aws:iam::708026873259:role/bug-report-tool-stack-harness-role"
 
 
 def get_gateway_arn():
     """Get the gateway ARN."""
-    try:
-        gateways = bedrock.list_gateways()
-        for g in gateways.get("items", []):
-            if g["name"] == "customer-support-gateway":
-                return f"arn:aws:bedrock-agentcore:us-east-1:{sts.get_caller_identity()['Account']}:gateway/{g['gatewayId']}"
-    except Exception as e:
-        print(f"Error getting gateway ARN: {e}")
-    return None
+    return "arn:aws:bedrock-agentcore:us-east-1:708026873259:gateway/customer-support-gateway-nbqvvptr1i"
 
 
 def create_harness(role_arn, system_prompt):
@@ -78,18 +62,7 @@ def create_harness(role_arn, system_prompt):
     ]
 
     try:
-        # Try to delete existing harness first
-        harnesses = bedrock.list_harnesses()
-        for h in harnesses.get("harnesses", []):
-            if h["harnessName"] == HARNESS_NAME:
-                try:
-                    bedrock.delete_harness(harnessId=h["harnessId"])
-                    print(f"Deleted existing harness: {h['harnessId']}")
-                    time.sleep(5)
-                except:
-                    pass
-
-        # Create new harness
+        # Create new harness (name includes timestamp so it's always unique)
         harness = bedrock.create_harness(
             harnessName=HARNESS_NAME,
             executionRoleArn=role_arn,
