@@ -23,7 +23,10 @@ Bedrock Agents Classic closed to new customers on July 30, 2026. The course inst
 
 **Evidence files:**
 - `system_prompt.txt` — the classifier/routing prompt
-- `screenshots/chat-transcripts/Bug report (multi-turn).png` — bug report path
+- `evidence/rubric-1-routing/flow-diagram.png` — flow diagram
+- `evidence/rubric-1-routing/classifier-prompt.png` — classifier prompt config
+- `evidence/rubric-1-routing/condition-nodes.png` — condition node expressions
+- `evidence/rubric-2-bug-report/bug-report-transcript.png` — bug report path
 - `screenshots/chat-transcripts/Platform question.png` — FAQ path
 - `screenshots/chat-transcripts/Other request.png` — redirect path
 
@@ -38,8 +41,8 @@ Bedrock Agents Classic closed to new customers on July 30, 2026. The course inst
 
 **Evidence files:**
 - `system_prompt.txt` — bug report collection rules
-- `screenshots/chat-transcripts/Bug report (multi-turn).png` — multi-turn collection + tool call
-- `screenshots/dynamodb-tickets/bug-report-tool-stack-bug-reports table items.png` — DynamoDB records
+- `evidence/rubric-2-bug-report/bug-report-transcript.png` — multi-turn collection + tool call
+- `evidence/rubric-2-bug-report/dynamodb-tickets.png` — DynamoDB records
 - `infrastructure/lambda/create_bug_report.py` — Lambda tool implementation
 
 ### 3. Implement Platform Question and Other Request Paths
@@ -54,8 +57,8 @@ Bedrock Agents Classic closed to new customers on July 30, 2026. The course inst
 **Evidence files:**
 - `system_prompt.txt` — FAQ grounding and redirect rules
 - `online_shop_faq.md` — embedded FAQ document
-- `screenshots/chat-transcripts/Platform question.png` — covered FAQ question
-- `screenshots/chat-transcripts/Other request.png` — other request redirect
+- `evidence/rubric-3-faq-other/faq-transcript.png` — covered FAQ question
+- `evidence/rubric-3-faq-other/other-transcript.png` — other request redirect
 
 ### 4. Testing and Evaluation
 
@@ -69,9 +72,9 @@ Bedrock Agents Classic closed to new customers on July 30, 2026. The course inst
 | Written observations | `docs/eval-observations.md` |
 
 **Evidence files:**
-- `harness-tests.json` — test suite
-- `output_eval_dataset.jsonl` — eval dataset
-- `screenshots/model-evaluation/final-model-evaluation-report.png` — eval results screenshot
+- `tests/harness-tests.json` — test suite
+- `tests/output_eval_dataset.jsonl` — eval dataset
+- `evidence/rubric-4-evaluation/eval-results.png` — eval results screenshot
 - `docs/eval-observations.md` — written observations
 
 ---
@@ -97,40 +100,48 @@ The rubric references Bedrock Flow artifacts (flow diagram, condition node expre
 
 ```
 customer-support-chatbot/
-├── system_prompt.txt                    # Main deliverable: routing + behavior prompt
-├── online_shop_faq.md                   # FAQ document embedded in prompt
-├── harness-tests.json                   # Test suite (7 tests, all 3 routes)
-├── output_eval_dataset.jsonl            # Eval dataset (7 records)
-├── eval-job-config.json                 # Eval job configuration
+├── .env                                  # AWS credentials
+├── system_prompt.txt                     # Main deliverable: routing + behavior prompt
+├── online_shop_faq.md                    # FAQ document embedded in prompt
 ├── requirements.txt
 ├── README.md
-├── docs/
-│   ├── submission-checklist.md          # All rubric items checked
-│   └── eval-observations.md             # Eval results write-up
-├── scripts/
-│   ├── aws/
-│   │   ├── setup_gateway.py             # Creates AgentCore Gateway + Target
-│   │   ├── create_harness.py            # Creates/updates the managed harness
-│   │   ├── chat.py                      # Interactive chat client
-│   │   ├── cleanup_agentcore.py         # Deletes harness, gateway
-│   │   └── debug_tools.py               # Debug gateway/tools
-│   └── bedrock/
-│       ├── generate-eval-dataset.py     # Runs harness → JSONL for Evaluations
-│       └── create_eval_job.py           # Creates Bedrock Evaluation job
+│
+├── implementation/
+│   ├── harness/                          # AgentCore managed harness (working agent)
+│   │   ├── agentcore_config.json
+│   │   ├── create_harness.py
+│   │   ├── chat.py
+│   │   ├── cleanup_agentcore.py
+│   │   ├── debug_tools.py
+│   │   └── debug_target.py
+│   │
+│   └── flow/                             # Bedrock Flow (rubric compliance)
+│       ├── create_flow.py
+│       ├── test_flow.py
+│       └── cleanup_flow.py
+│
+├── tests/
+│   ├── harness-tests.json                # Test suite (7 tests, all 3 routes)
+│   ├── harness-tests-template.json
+│   ├── output_eval_dataset.jsonl         # Eval dataset (7 records)
+│   ├── eval-job-config.json
+│   ├── generate-eval-dataset.py
+│   └── create_eval_job.py
+│
 ├── infrastructure/
-│   ├── cloudformation-tool.yaml         # DynamoDB, Lambda, IAM roles
-│   ├── cloudformation-testing.yaml      # S3 bucket + eval IAM role
+│   ├── cloudformation-tool.yaml          # DynamoDB, Lambda, IAM roles
+│   ├── cloudformation-testing.yaml       # S3 bucket + eval IAM role
 │   └── lambda/
-│       └── create_bug_report.py         # Lambda function code
-└── screenshots/
-    ├── chat-transcripts/
-    │   ├── Bug report (multi-turn).png
-    │   ├── Platform question.png
-    │   └── Other request.png
-    ├── dynamodb-tickets/
-    │   ├── bug-report-tool-stack-bug-reports table items.png
-    │   └── tables.png
-    └── model-evaluation/
-        ├── final-model-evaluation-report.png
-        └── model-evaluation-list.png
+│       └── create_bug_report.py          # Lambda function code
+│
+├── docs/
+│   ├── submission-notes.md               # Rubric mapping + architecture note
+│   ├── submission-checklist.md
+│   └── eval-observations.md
+│
+└── evidence/
+     ├── rubric-1-routing/                # Flow diagram, classifier, condition nodes
+     ├── rubric-2-bug-report/             # Bug report transcript + DynamoDB
+     ├── rubric-3-faq-other/              # FAQ transcript + other request
+     └── rubric-4-evaluation/             # Eval screenshots + observations
 ```

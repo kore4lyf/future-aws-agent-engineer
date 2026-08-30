@@ -26,32 +26,45 @@ customer-support-chatbot/
 ├── .env                          # AWS credentials
 ├── system_prompt.txt             # Main deliverable: chatbot prompt
 ├── online_shop_faq.md            # FAQ document for platform questions
-├── harness-tests.json            # Test cases for evaluation
-├── harness-tests-template.json   # Template for test cases
-├── output_eval_dataset.jsonl     # Generated evaluation dataset
-├── eval-job-config.json          # Bedrock Evaluation job config
 ├── requirements.txt
 ├── README.md
 │
-├── scripts/
-│   ├── aws/
-│   │   ├── setup_gateway.py      # Creates AgentCore Gateway + Target
-│   │   ├── create_harness.py     # Creates/updates the managed harness
-│   │   ├── chat.py               # Interactive chat client
-│   │   ├── cleanup_agentcore.py  # Deletes harness, gateway, target
-│   │   ├── debug_target.py       # Debug gateway target payload
-│   │   └── debug_tools.py        # Debug available tools
-│   └── bedrock/
-│       └── generate-eval-dataset.py  # Runs harness → JSONL for Evaluations
+├── implementation/
+│   ├── harness/                  # AgentCore managed harness (working agent)
+│   │   ├── agentcore_config.json
+│   │   ├── create_harness.py
+│   │   ├── chat.py
+│   │   ├── cleanup_agentcore.py
+│   │   ├── debug_tools.py
+│   │   └── debug_target.py
+│   │
+│   └── flow/                     # Bedrock Flow (rubric compliance)
+│       ├── create_flow.py
+│       ├── test_flow.py
+│       └── cleanup_flow.py
+│
+├── tests/
+│   ├── harness-tests.json        # Test suite (7 tests)
+│   ├── harness-tests-template.json
+│   ├── output_eval_dataset.jsonl # Eval dataset (7 records)
+│   └── eval-job-config.json
 │
 ├── infrastructure/
-│   ├── cloudformation-tool.yaml       # DynamoDB, Lambda, IAM roles
-│   ├── cloudformation-testing.yaml    # S3 bucket + eval IAM role
+│   ├── cloudformation-tool.yaml
+│   ├── cloudformation-testing.yaml
 │   └── lambda/
-│       └── create_bug_report.py       # Lambda function code
+│       └── create_bug_report.py
 │
-└── docs/
-    └── submission-checklist.md        # Rubric evidence checklist
+├── docs/
+│   ├── submission-notes.md       # Rubric mapping + architecture note
+│   ├── submission-checklist.md
+│   └── eval-observations.md
+│
+└── evidence/
+     ├── rubric-1-routing/        # Flow diagram, classifier, condition nodes
+     ├── rubric-2-bug-report/     # Bug report transcript + DynamoDB
+     ├── rubric-3-faq-other/      # FAQ transcript + other request
+     └── rubric-4-evaluation/     # Eval screenshots + observations
 ```
 
 ## Quick Start
@@ -68,69 +81,36 @@ aws cloudformation deploy \
   --region us-east-1
 
 # 3. Create Gateway
-python scripts/aws/setup_gateway.py
+python implementation/harness/setup_gateway.py
 
 # 4. Create Harness
-python scripts/aws/create_harness.py
+python implementation/harness/create_harness.py
 
 # 5. Chat
-python scripts/aws/chat.py
+python implementation/harness/chat.py
 
 # 6. Cleanup
-python scripts/aws/cleanup_agentcore.py
+python implementation/harness/cleanup_agentcore.py
 ```
-
-## System Prompt Design
-
-The system prompt handles three categories:
-
-### Bug Reports
-- Collects: description, steps to reproduce, environment
-- Asks ONE question per turn
-- Files ticket via `create_bug_report` tool
-
-### Platform Questions
-- Answers from embedded FAQ only
-- Covers: orders, shipping, returns, payments
-- Redirects to human support if FAQ doesn't cover the question
-
-### Other Requests
-- Politely acknowledges
-- Offers to connect with human support
-- Keeps response under 50 words
 
 ## Evaluation
 
 ```bash
-# 1. Copy test template and add your test cases
-cp harness-tests-template.json harness-tests.json
+# 1. Generate eval dataset
+python tests/generate-eval-dataset.py --tests-json tests/harness-tests.json
 
-# 2. Generate evaluation dataset
-python scripts/bedrock/generate-eval-dataset.py --tests-json harness-tests.json
-
-# 3. Deploy testing stack
+# 2. Deploy testing stack
 aws cloudformation deploy \
   --template-file infrastructure/cloudformation-testing.yaml \
   --stack-name bug-report-testing-stack \
   --capabilities CAPABILITY_NAMED_IAM \
   --region us-east-1
 
-# 4. Get stack outputs
-aws cloudformation describe-stacks \
-  --stack-name bug-report-testing-stack \
-  --query 'Stacks[0].Outputs' \
-  --output table \
-  --region us-east-1
-
-# 5. Upload to S3
-aws s3 cp output_eval_dataset.jsonl \
+# 3. Upload to S3
+aws s3 cp tests/output_eval_dataset.jsonl \
   s3://<EvalDatasetBucketName>/output_eval_dataset.jsonl \
   --region us-east-1
 
-# 6. Create Bedrock Evaluation job
-aws bedrock create-evaluation-job \
-  --job-name support-chatbot-eval-run-1 \
-  --role-arn <BedrockEvalRoleArn> \
-  --evaluation-config file://eval-job-config.json \
-  --region us-east-1
+# 4. Create Bedrock Evaluation job
+python tests/create_eval_job.py
 ```
