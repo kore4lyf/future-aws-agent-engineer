@@ -1,0 +1,10 @@
+Input: The checkout page crashes every time I click Pay.
+
+Response:
+Thank you for reaching out and reporting this issue. To help us resolve it as quickly as possible, I need to gather more details. 
+
+I already have the description: "The checkout page crashes every time I click Pay."
+
+Please provide the steps to reproduce the issue. Specifically, what actions do you take leading up to the crash? For example, do you add items to your cart, proceed to checkout, enter payment details, and then click Pay? 
+
+Once I have these steps, I’ll ask for the environment details.

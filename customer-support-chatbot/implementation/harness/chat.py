@@ -7,6 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 root_dir = Path(__file__).parent.parent.parent
+harness_dir = Path(__file__).parent
 load_dotenv(root_dir / ".env")
 
 # ---------------------------------------------------------------------------
@@ -17,7 +18,7 @@ bedrock = boto3.client("bedrock-agentcore", region_name="us-east-1")
 
 def load_harness_arn():
     try:
-        with open(root_dir / "agentcore_config.json", "r") as f:
+        with open(harness_dir / "agentcore_config.json", "r") as f:
             config = json.load(f)
             return config.get("harness_arn")
     except FileNotFoundError:
@@ -35,15 +36,27 @@ def invoke_harness(harness_arn, session_id, user_message):
         )
 
         full_response = []
+        tool_calls = []
+
         for event in response.get("stream", []):
             if "contentBlockDelta" in event:
                 delta = event["contentBlockDelta"].get("delta", {})
                 if "text" in delta:
                     full_response.append(delta["text"])
+            elif "contentBlockStart" in event:
+                start = event["contentBlockStart"].get("start", {})
+                if "toolUse" in start:
+                    tool_name = start["toolUse"].get("name", "unknown")
+                    tool_calls.append(tool_name)
 
         # Join and remove thinking tags
         text = "".join(full_response)
         text = re.sub(r'<thinking>.*?</thinking>', '', text, flags=re.DOTALL)
+
+        # Append tool call info if present
+        if tool_calls:
+            text = text + "\n[tool call] " + ", ".join(tool_calls)
+
         return text.strip()
 
     except Exception as e:

@@ -1,0 +1,8 @@
+Input: How long does shipping take?
+
+Response:
+Shipping times vary based on the shipping method selected:
+- Standard shipping typically takes 3-5 business days.
+- Express shipping typically takes 1-2 business days (additional fee applies).
+
+If you have any more questions or need further assistance, feel free to ask!

@@ -1,0 +1,4 @@
+Input: Can you help me write an essay?
+
+Response:
+I can assist with bug reports or platform questions. For essays, contact human support.

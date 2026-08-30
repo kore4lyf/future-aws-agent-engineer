@@ -1,0 +1,11 @@
+Condition Node Expressions:
+
+Condition: bug_report
+Expression: conditionInput == "bug_report"
+
+Condition: platform_question
+Expression: conditionInput == "platform_question"
+
+Condition: default
+Expression: None
+

@@ -1,0 +1,371 @@
+{
+  "nodes": [
+    {
+      "name": "FlowInput",
+      "type": "Input",
+      "configuration": {
+        "input": {}
+      },
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "document",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "Classifier",
+      "type": "Prompt",
+      "configuration": {
+        "prompt": {
+          "sourceConfiguration": {
+            "inline": {
+              "templateType": "TEXT",
+              "templateConfiguration": {
+                "text": {
+                  "text": "You are a message classifier for a customer support chatbot.\n\nClassify the customer's message into exactly ONE of these categories:\n- bug_report: The customer is reporting a problem, error, or issue with the platform.\n- platform_question: The customer is asking about orders, shipping, returns, or payments.\n- other: The request does not fit either category above.\n\nRespond with ONLY one of these words:\nbug_report\nplatform_question\nother\n\nDo not include any other text, explanations, or formatting. Just the word.\n\nCustomer message:\n{{input}}",
+                  "inputVariables": [
+                    {
+                      "name": "input"
+                    }
+                  ]
+                }
+              },
+              "modelId": "amazon.nova-pro-v1:0"
+            }
+          }
+        }
+      },
+      "inputs": [
+        {
+          "name": "input",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "modelCompletion",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "RouteByCategory",
+      "type": "Condition",
+      "configuration": {
+        "condition": {
+          "conditions": [
+            {
+              "name": "bug_report",
+              "expression": "conditionInput == \"bug_report\""
+            },
+            {
+              "name": "platform_question",
+              "expression": "conditionInput == \"platform_question\""
+            },
+            {
+              "name": "default"
+            }
+          ]
+        }
+      },
+      "inputs": [
+        {
+          "name": "conditionInput",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "name": "BugReportHandler",
+      "type": "Prompt",
+      "configuration": {
+        "prompt": {
+          "sourceConfiguration": {
+            "inline": {
+              "templateType": "TEXT",
+              "templateConfiguration": {
+                "text": {
+                  "text": "You are a customer support chatbot for an online shop.\n\nThe customer has reported a bug. Your job is to collect all required details before filing a ticket.\n\nRequired fields:\n- description: What is the problem?\n- stepsToReproduce: How can we reproduce this issue?\n- environment: Browser, device, operating system, app version\n\nCRITICAL RULES:\n1. A single sentence like \"The checkout page crashes\" is ONLY a description. It is NOT steps or environment.\n2. You must have explicit answers for ALL THREE fields before calling the tool.\n3. If any field is missing, ask for exactly ONE missing field per turn.\n4. NEVER call the tool with missing fields. NEVER make up or infer missing fields.\n5. After collecting all three, call the tool, then respond: \"Ticket filed: <ticket_id>\"\n\nCustomer message:\n{{input}}",
+                  "inputVariables": [
+                    {
+                      "name": "input"
+                    }
+                  ]
+                }
+              },
+              "modelId": "amazon.nova-pro-v1:0"
+            }
+          }
+        }
+      },
+      "inputs": [
+        {
+          "name": "input",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "modelCompletion",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "FAQHandler",
+      "type": "Prompt",
+      "configuration": {
+        "prompt": {
+          "sourceConfiguration": {
+            "inline": {
+              "templateType": "TEXT",
+              "templateConfiguration": {
+                "text": {
+                  "text": "You are a customer support chatbot for an online shop.\n\nThe customer is asking about orders, shipping, returns, or payments.\n\nAnswer using ONLY the FAQ document below. Do not make up answers or add information not in the FAQ.\n\nFAQ Document:\n# Online Shop FAQ\n\n## Orders\n- Orders can be tracked via the \"My Orders\" page in your account dashboard.\n- Orders cannot be modified after 30 minutes of placement.\n- To cancel an order, go to My Orders \u00e2\u2020\u2019 Select Order \u00e2\u2020\u2019 Cancel Order.\n\n## Shipping\n- Standard shipping: 3-5 business days.\n- Express shipping: 1-2 business days (additional fee applies).\n- Free shipping on orders over $50.\n- Shipping is available to all 50 US states.\n\n## Returns\n- Returns accepted within 30 days of delivery.\n- Items must be unused and in original packaging.\n- Refunds are processed within 5-7 business days after return is received.\n- Return shipping is paid by the customer unless the item was defective.\n\n## Payments\n- Accepted: Visa, Mastercard, American Express, PayPal, Apple Pay.\n- All transactions are encrypted and secure.\n- For payment issues, contact your bank first, then reach out to us.\n- Promotional codes must be applied at checkout \u00e2\u20ac\u201d they cannot be added later.\n\n## Products\n- Product availability is shown in real-time on each product page.\n- Size guides are available for clothing and footwear items.\n- To check warranty information, visit the product page or contact support.\n- Product images are for illustration only; actual colors may vary slightly.\n\n## Account\n- To reset your password, click \"Forgot Password\" on the login page.\n- You can update your email or phone number in Account Settings.\n- To delete your account, contact support \u00e2\u20ac\u201d this action is permanent.\n- Order history is available in your account dashboard under \"My Orders.\"\n\n## Privacy\n- Your personal data is encrypted and never shared with third parties.\n- We use cookies to improve your shopping experience.\n- You can request a copy of your data by contacting support.\n- To unsubscribe from emails, click \"Unsubscribe\" at the bottom of any marketing email.\n\n\nIf the FAQ does not cover the customer's question, politely tell them you don't have that information and offer to connect them with human support.\n\nCustomer message:\n{{input}}",
+                  "inputVariables": [
+                    {
+                      "name": "input"
+                    }
+                  ]
+                }
+              },
+              "modelId": "amazon.nova-pro-v1:0"
+            }
+          }
+        }
+      },
+      "inputs": [
+        {
+          "name": "input",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "modelCompletion",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "OtherHandler",
+      "type": "Prompt",
+      "configuration": {
+        "prompt": {
+          "sourceConfiguration": {
+            "inline": {
+              "templateType": "TEXT",
+              "templateConfiguration": {
+                "text": {
+                  "text": "You are a customer support chatbot for an online shop.\n\nThe customer's request does not fit bug reports or platform questions.\n\n1. Politely acknowledge the message.\n2. Explain that you can help with bug reports or platform questions (orders, shipping, returns, payments).\n3. Offer to connect them with human support for other inquiries.\n4. Keep the response under 50 words.\n\nCustomer message:\n{{input}}",
+                  "inputVariables": [
+                    {
+                      "name": "input"
+                    }
+                  ]
+                }
+              },
+              "modelId": "amazon.nova-pro-v1:0"
+            }
+          }
+        }
+      },
+      "inputs": [
+        {
+          "name": "input",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "modelCompletion",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "BugReportOutput",
+      "type": "Output",
+      "configuration": {
+        "output": {}
+      },
+      "inputs": [
+        {
+          "name": "document",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "name": "FAQOutput",
+      "type": "Output",
+      "configuration": {
+        "output": {}
+      },
+      "inputs": [
+        {
+          "name": "document",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "name": "OtherOutput",
+      "type": "Output",
+      "configuration": {
+        "output": {}
+      },
+      "inputs": [
+        {
+          "name": "document",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ],
+      "outputs": []
+    }
+  ],
+  "connections": [
+    {
+      "type": "Data",
+      "name": "input_to_classifier",
+      "source": "FlowInput",
+      "target": "Classifier",
+      "configuration": {
+        "data": {
+          "sourceOutput": "document",
+          "targetInput": "input"
+        }
+      }
+    },
+    {
+      "type": "Data",
+      "name": "classifier_to_condition",
+      "source": "Classifier",
+      "target": "RouteByCategory",
+      "configuration": {
+        "data": {
+          "sourceOutput": "modelCompletion",
+          "targetInput": "conditionInput"
+        }
+      }
+    },
+    {
+      "type": "Conditional",
+      "name": "route_to_bug_report",
+      "source": "RouteByCategory",
+      "target": "BugReportHandler",
+      "configuration": {
+        "conditional": {
+          "condition": "bug_report"
+        }
+      }
+    },
+    {
+      "type": "Conditional",
+      "name": "route_to_faq",
+      "source": "RouteByCategory",
+      "target": "FAQHandler",
+      "configuration": {
+        "conditional": {
+          "condition": "platform_question"
+        }
+      }
+    },
+    {
+      "type": "Conditional",
+      "name": "route_to_other",
+      "source": "RouteByCategory",
+      "target": "OtherHandler",
+      "configuration": {
+        "conditional": {
+          "condition": "default"
+        }
+      }
+    },
+    {
+      "type": "Data",
+      "name": "input_to_bug_report",
+      "source": "FlowInput",
+      "target": "BugReportHandler",
+      "configuration": {
+        "data": {
+          "sourceOutput": "document",
+          "targetInput": "input"
+        }
+      }
+    },
+    {
+      "type": "Data",
+      "name": "input_to_faq",
+      "source": "FlowInput",
+      "target": "FAQHandler",
+      "configuration": {
+        "data": {
+          "sourceOutput": "document",
+          "targetInput": "input"
+        }
+      }
+    },
+    {
+      "type": "Data",
+      "name": "input_to_other",
+      "source": "FlowInput",
+      "target": "OtherHandler",
+      "configuration": {
+        "data": {
+          "sourceOutput": "document",
+          "targetInput": "input"
+        }
+      }
+    },
+    {
+      "type": "Data",
+      "name": "bug_report_to_output",
+      "source": "BugReportHandler",
+      "target": "BugReportOutput",
+      "configuration": {
+        "data": {
+          "sourceOutput": "modelCompletion",
+          "targetInput": "document"
+        }
+      }
+    },
+    {
+      "type": "Data",
+      "name": "faq_to_output",
+      "source": "FAQHandler",
+      "target": "FAQOutput",
+      "configuration": {
+        "data": {
+          "sourceOutput": "modelCompletion",
+          "targetInput": "document"
+        }
+      }
+    },
+    {
+      "type": "Data",
+      "name": "other_to_output",
+      "source": "OtherHandler",
+      "target": "OtherOutput",
+      "configuration": {
+        "data": {
+          "sourceOutput": "modelCompletion",
+          "targetInput": "document"
+        }
+      }
+    }
+  ]
+}
