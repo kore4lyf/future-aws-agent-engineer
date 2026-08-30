@@ -3,9 +3,11 @@ import json
 import re
 import sys
 import uuid
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+root_dir = Path(__file__).parent.parent
+load_dotenv(root_dir / ".env")
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -15,7 +17,7 @@ bedrock = boto3.client("bedrock-agentcore", region_name="us-east-1")
 
 def load_harness_arn():
     try:
-        with open("agentcore_config.json", "r") as f:
+        with open(root_dir / "agentcore_config.json", "r") as f:
             config = json.load(f)
             return config.get("harness_arn")
     except FileNotFoundError:

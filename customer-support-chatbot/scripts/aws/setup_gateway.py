@@ -1,9 +1,11 @@
 import boto3
 import json
 import time
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+root_dir = Path(__file__).parent.parent
+load_dotenv(root_dir / ".env")
 
 # ---------------------------------------------------------------------------
 # Setup

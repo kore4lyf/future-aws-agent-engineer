@@ -1,8 +1,10 @@
 import boto3
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+root_dir = Path(__file__).parent.parent
+load_dotenv(root_dir / ".env")
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -12,7 +14,7 @@ iam = boto3.client("iam", region_name="us-east-1")
 
 GATEWAY_NAME = "customer-support-gateway"
 TARGET_NAME = "bugreports"
-HARNESS_NAME = "customer-support-chatbot"
+HARNESS_NAME = "customer_support_chatbot"
 
 
 def cleanup():
@@ -21,8 +23,8 @@ def cleanup():
     # Delete harness
     try:
         harnesses = bedrock.list_harnesses()
-        for h in harnesses.get("items", []):
-            if h["name"] == HARNESS_NAME:
+        for h in harnesses.get("harnesses", []):
+            if h.get("name") == HARNESS_NAME:
                 bedrock.delete_harness(harnessId=h["harnessId"])
                 print(f"Deleted harness: {h['harnessId']}")
     except Exception as e:
@@ -32,15 +34,16 @@ def cleanup():
     try:
         gateways = bedrock.list_gateways()
         for g in gateways.get("items", []):
-            if g["name"] == GATEWAY_NAME:
+            if g.get("name") == GATEWAY_NAME:
                 bedrock.delete_gateway(gatewayId=g["gatewayId"])
                 print(f"Deleted gateway: {g['gatewayId']}")
     except Exception as e:
         print(f"Gateway cleanup note: {e}")
 
     # Remove agentcore_config.json
-    if os.path.exists("agentcore_config.json"):
-        os.remove("agentcore_config.json")
+    config_path = root_dir / "agentcore_config.json"
+    if config_path.exists():
+        os.remove(config_path)
         print("Removed agentcore_config.json")
 
     print("\n=== Cleanup Complete ===")

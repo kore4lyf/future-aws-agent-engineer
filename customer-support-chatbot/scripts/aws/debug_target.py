@@ -1,7 +1,10 @@
 import boto3
 import json
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()
+
+root_dir = Path(__file__).parent.parent
+load_dotenv(root_dir / ".env")
 
 bedrock = boto3.client('bedrock-agentcore-control', region_name='us-east-1')
 

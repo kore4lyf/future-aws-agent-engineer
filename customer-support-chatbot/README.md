@@ -19,19 +19,40 @@ User → chat.py → AgentCore Harness → ReAct Loop → Lambda Tool → Dynamo
 - **Platform Questions**: Answers using embedded FAQ (orders, shipping, returns, payments)
 - **Other Requests**: Politely redirects to human support
 
-## Files
+## Project Structure
 
-| File | Purpose |
-|------|---------|
-| `system_prompt.txt` | Main system prompt (main deliverable) |
-| `cloudformation-tool.yaml` | Deploys DynamoDB, Lambda, and IAM roles |
-| `create_bug_report.py` | Lambda function code |
-| `setup_gateway.py` | Creates AgentCore Gateway |
-| `create_harness.py` | Creates the managed harness |
-| `chat.py` | Terminal chat client |
-| `online_shop_faq.md` | FAQ document |
-| `cleanup_agentcore.py` | Deletes resources |
-| `requirements.txt` | Dependencies |
+```
+customer-support-chatbot/
+├── .env                          # AWS credentials
+├── system_prompt.txt             # Main deliverable: chatbot prompt
+├── online_shop_faq.md            # FAQ document for platform questions
+├── harness-tests.json            # Test cases for evaluation
+├── harness-tests-template.json   # Template for test cases
+├── output_eval_dataset.jsonl     # Generated evaluation dataset
+├── eval-job-config.json          # Bedrock Evaluation job config
+├── requirements.txt
+├── README.md
+│
+├── scripts/
+│   ├── aws/
+│   │   ├── setup_gateway.py      # Creates AgentCore Gateway + Target
+│   │   ├── create_harness.py     # Creates/updates the managed harness
+│   │   ├── chat.py               # Interactive chat client
+│   │   ├── cleanup_agentcore.py  # Deletes harness, gateway, target
+│   │   ├── debug_target.py       # Debug gateway target payload
+│   │   └── debug_tools.py        # Debug available tools
+│   └── bedrock/
+│       └── generate-eval-dataset.py  # Runs harness → JSONL for Evaluations
+│
+├── infrastructure/
+│   ├── cloudformation-tool.yaml       # DynamoDB, Lambda, IAM roles
+│   ├── cloudformation-testing.yaml    # S3 bucket + eval IAM role
+│   └── lambda/
+│       └── create_bug_report.py       # Lambda function code
+│
+└── docs/
+    └── submission-checklist.md        # Rubric evidence checklist
+```
 
 ## Quick Start
 
@@ -41,22 +62,22 @@ pip install -r requirements.txt
 
 # 2. Deploy CloudFormation stack
 aws cloudformation deploy \
-  --template-file cloudformation-tool.yaml \
+  --template-file infrastructure/cloudformation-tool.yaml \
   --stack-name bug-report-tool-stack \
   --capabilities CAPABILITY_NAMED_IAM \
   --region us-east-1
 
 # 3. Create Gateway
-python setup_gateway.py
+python scripts/aws/setup_gateway.py
 
 # 4. Create Harness
-python create_harness.py
+python scripts/aws/create_harness.py
 
 # 5. Chat
-python chat.py
+python scripts/aws/chat.py
 
 # 6. Cleanup
-python cleanup_agentcore.py
+python scripts/aws/cleanup_agentcore.py
 ```
 
 ## System Prompt Design
@@ -78,44 +99,18 @@ The system prompt handles three categories:
 - Offers to connect with human support
 - Keeps response under 50 words
 
-## Test Cases
-
-**Bug Report:**
-```
-You: The checkout page is broken
-Assistant: I'm sorry to hear that. Can you describe what happens when you try to checkout?
-You: It shows an error message
-Assistant: What does the error message say?
-You: "Payment failed" but I didn't enter any payment info
-Assistant: What browser and device are you using?
-You: Chrome on Windows 10
-Assistant: Thank you. Let me file a bug report for you. [files ticket]
-```
-
-**Platform Question:**
-```
-You: How long does shipping take?
-Assistant: Standard shipping takes 3-5 business days. Express shipping is 1-2 business days for an additional fee. Orders over $50 qualify for free shipping.
-```
-
-**Other Request:**
-```
-You: Can you help me with my homework?
-Assistant: I'm here to help with bug reports or platform questions (orders, shipping, returns, payments). For other inquiries, I can connect you with human support. Would you like me to do that?
-```
-
 ## Evaluation
 
 ```bash
 # 1. Copy test template and add your test cases
-cp flow-tests-template.json flow-tests.json
+cp harness-tests-template.json harness-tests.json
 
 # 2. Generate evaluation dataset
-python generate-eval-dataset.py --tests-json flow-tests.json
+python scripts/bedrock/generate-eval-dataset.py --tests-json harness-tests.json
 
 # 3. Deploy testing stack
 aws cloudformation deploy \
-  --template-file cloudformation-testing.yaml \
+  --template-file infrastructure/cloudformation-testing.yaml \
   --stack-name bug-report-testing-stack \
   --capabilities CAPABILITY_NAMED_IAM \
   --region us-east-1
@@ -132,5 +127,10 @@ aws s3 cp output_eval_dataset.jsonl \
   s3://<EvalDatasetBucketName>/output_eval_dataset.jsonl \
   --region us-east-1
 
-# 6. Run Bedrock Evaluation job (see Testing Framework docs)
+# 6. Create Bedrock Evaluation job
+aws bedrock create-evaluation-job \
+  --job-name support-chatbot-eval-run-1 \
+  --role-arn <BedrockEvalRoleArn> \
+  --evaluation-config file://eval-job-config.json \
+  --region us-east-1
 ```

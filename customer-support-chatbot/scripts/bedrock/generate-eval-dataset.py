@@ -3,9 +3,11 @@ import json
 import re
 import uuid
 import argparse
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+root_dir = Path(__file__).parent.parent
+load_dotenv(root_dir / ".env")
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -15,7 +17,7 @@ bedrock = boto3.client("bedrock-agentcore", region_name="us-east-1")
 
 def load_harness_arn():
     try:
-        with open("agentcore_config.json", "r") as f:
+        with open(root_dir / "agentcore_config.json", "r") as f:
             config = json.load(f)
             return config.get("harness_arn")
     except FileNotFoundError:
@@ -92,10 +94,10 @@ def main():
         return
 
     try:
-        with open(args.tests_json, "r") as f:
+        with open(root_dir / args.tests_json, "r") as f:
             test_suite = json.load(f)
     except FileNotFoundError:
-        print("Error: harness-tests.json not found.")
+        print(f"Error: {args.tests_json} not found.")
         print("Copy harness-tests-template.json to harness-tests.json and add your test cases.")
         return
 
@@ -107,14 +109,14 @@ def main():
         result = run_test(harness_arn, test)
         results.append(result)
 
-    output_file = "output_eval_dataset.jsonl"
+    output_file = root_dir / "output_eval_dataset.jsonl"
     with open(output_file, "w") as f:
         for result in results:
             f.write(json.dumps(result) + "\n")
 
     print(f"\nWrote {len(results)} records to {output_file}")
     print("\nNext steps:")
-    print("1. Deploy testing stack: aws cloudformation deploy --template-file cloudformation-testing.yaml --stack-name bug-report-testing-stack --capabilities CAPABILITY_NAMED_IAM --region us-east-1")
+    print("1. Deploy testing stack: aws cloudformation deploy --template-file infrastructure/cloudformation-testing.yaml --stack-name bug-report-testing-stack --capabilities CAPABILITY_NAMED_IAM --region us-east-1")
     print("2. Get stack outputs: aws cloudformation describe-stacks --stack-name bug-report-testing-stack --query 'Stacks[0].Outputs' --output table --region us-east-1")
     print("3. Upload to S3: aws s3 cp output_eval_dataset.jsonl s3://<EvalDatasetBucketName>/output_eval_dataset.jsonl --region us-east-1")
     print("4. Run Bedrock Evaluation job")

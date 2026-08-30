@@ -2,9 +2,11 @@ import boto3
 import json
 import time
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+root_dir = Path(__file__).parent.parent
+load_dotenv(root_dir / ".env")
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -19,9 +21,9 @@ TOOL_NAME = "create_bug_report"
 
 
 def load_system_prompt():
-    with open("system_prompt.txt", "r") as f:
+    with open(root_dir / "system_prompt.txt", "r") as f:
         prompt = f.read()
-    with open("online_shop_faq.md", "r") as f:
+    with open(root_dir / "online_shop_faq.md", "r") as f:
         faq = f.read()
     prompt = prompt.replace("{{FAQ}}", faq)
     return prompt
@@ -121,7 +123,7 @@ def create_harness(role_arn, system_prompt):
         print("Harness did not reach READY in time")
 
     # Save harness ARN
-    with open("agentcore_config.json", "w") as f:
+    with open(root_dir / "agentcore_config.json", "w") as f:
         json.dump({"harness_arn": harness_arn, "harness_id": harness_id}, f, indent=2)
     print(f"Saved harness config to agentcore_config.json")
 
