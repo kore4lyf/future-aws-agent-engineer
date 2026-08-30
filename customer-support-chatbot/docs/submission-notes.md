@@ -52,13 +52,14 @@ Bedrock Agents Classic closed to new customers on July 30, 2026. The course inst
 | Relevant answer when FAQ covers the question | `system_prompt.txt` embeds `online_shop_faq.md`; transcript shows accurate FAQ-grounded answer for shipping question |
 | Redirects to human support when FAQ doesn't cover the question | Prompt line 11: redirect when FAQ doesn't cover the question |
 | Separate path for other requests → support phone line | Prompt lines 13–19 define OTHER category with polite redirect |
-| Screenshots of covered, uncovered, and other-request responses | `evidence/rubric-3-faq-other/Platform question.png`, `evidence/rubric-3-faq-other/Other request.png` |
+| Screenshots of covered, uncovered, and other-request responses | `evidence/rubric-3-faq-other/faq-other-1.png`, `evidence/rubric-3-faq-other/faq-other-2.png`, `evidence/rubric-3-faq-other/Other request.png` |
 
 **Evidence files:**
 - `system_prompt.txt` — FAQ grounding and redirect rules
 - `online_shop_faq.md` — embedded FAQ document
-- `evidence/rubric-3-faq-other/faq-prompt-node.txt` — FAQ prompt node template
-- `evidence/rubric-3-faq-other/Platform question.png` — covered FAQ question
+- `evidence/rubric-3-faq-other/faq-prompt-node.txt` — FAQ prompt node template text
+- `evidence/rubric-3-faq-other/faq-other-1.png` — Bedrock Flow test: covered FAQ question
+- `evidence/rubric-3-faq-other/faq-other-2.png` — Bedrock Flow test: uncovered FAQ question
 - `evidence/rubric-3-faq-other/Other request.png` — other request redirect
 
 ### 4. Testing and Evaluation
@@ -159,7 +160,7 @@ customer-support-chatbot/
 └── evidence/
      ├── rubric-1-routing/                # Flow diagram, classifier, condition nodes, flow tests
      │   ├── flow-diagram.md
-     │   ├── flow-diagram.png.png
+     │   ├── flow-diagram.png
      │   ├── classifier-prompt.txt
      │   ├── condition-nodes.txt
      │   ├── flow-test-bug-report.txt
@@ -171,7 +172,8 @@ customer-support-chatbot/
      │   └── tables.png
      ├── rubric-3-faq-other/              # FAQ transcript + other request
      │   ├── faq-prompt-node.txt
-     │   ├── Platform question.png
+     │   ├── faq-other-1.png
+     │   ├── faq-other-2.png
      │   └── Other request.png
      └── rubric-4-evaluation/             # Eval screenshots + observations
          ├── final-model-evaluation-report.png
