@@ -25,14 +25,14 @@ agents:
       protocol_configuration:
         server_protocol: HTTP
       observability:
-        enabled: true
+        enabled: false
       lifecycle_configuration:
         idle_runtime_session_timeout: null
         max_lifetime: null
     bedrock_agentcore:
       agent_id: wanderbot_Agent-Dp1oks5MVy
       agent_arn: arn:aws:bedrock-agentcore:us-east-1:789095801094:runtime/wanderbot_Agent-Dp1oks5MVy
-      agent_session_id: 1891c17d-06cc-4f16-b2c2-5a0332a9e5aa
+      agent_session_id: d219e2b2-a7fd-401d-b9e0-1096010c7de7
     codebuild:
       project_name: null
       execution_role: null

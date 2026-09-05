@@ -1,3 +1,8 @@
+import os
+os.environ["OTEL_TRACES_EXPORTER"] = "none"
+os.environ["OTEL_METRICS_EXPORTER"] = "none"
+os.environ["OTEL_LOGS_EXPORTER"] = "none"
+
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from strands import Agent
 from strands.models import BedrockModel
