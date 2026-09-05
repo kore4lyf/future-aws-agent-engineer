@@ -32,7 +32,7 @@ agents:
     bedrock_agentcore:
       agent_id: wanderbot_Agent-Dp1oks5MVy
       agent_arn: arn:aws:bedrock-agentcore:us-east-1:789095801094:runtime/wanderbot_Agent-Dp1oks5MVy
-      agent_session_id: d219e2b2-a7fd-401d-b9e0-1096010c7de7
+      agent_session_id: f224a029-1258-4be8-b2ea-f6c98f495ab6
     codebuild:
       project_name: null
       execution_role: null
