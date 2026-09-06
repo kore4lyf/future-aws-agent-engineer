@@ -72,6 +72,28 @@ def search_hotels(city: str, max_price_usd: float = None) -> str:
     return json.dumps(results, indent=2)
 
 
+@tool
+def get_exchange_rate(amount_usd: float, target_currency: str) -> str:
+    """Convert an amount from USD to a target currency.
+
+    Args:
+        amount_usd: Amount in US dollars to convert.
+        target_currency: ISO 4217 currency code (e.g., "EUR", "GBP", "JPY", "CAD").
+
+    Returns:
+        The converted amount with the exchange rate used.
+    """
+    with open(DATASETS_DIR / "exchange_rates.json") as f:
+        rates = json.load(f)
+
+    for rate in rates:
+        if rate["currency_code"] == target_currency.upper():
+            converted = amount_usd * rate["rate_to_usd"]
+            return f"${amount_usd:.2f} USD = {converted:.2f} {target_currency.upper()} (rate: 1 USD = {rate['rate_to_usd']} {target_currency.upper()})"
+
+    return f"Currency {target_currency} not found. Available: {', '.join(r['currency_code'] for r in rates)}"
+
+
 @app.entrypoint
 async def invoke(payload: dict, context=None):
     user_message = payload.get("message", "Hello!")
