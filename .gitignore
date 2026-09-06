@@ -20,5 +20,8 @@ demo_config.json
 .DS_Store
 Thumbs.db
 
+# Zip files
+*.zip
+
 # Git
 .git/
