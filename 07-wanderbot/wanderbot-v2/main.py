@@ -1,7 +1,10 @@
+import json
+from pathlib import Path
+
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
-from strands import Agent
+from strands import Agent, tool
 from strands.models import BedrockModel
-from strands_tools import calculator  # built-in Strands tool
+from strands_tools import calculator, current_time
 
 app = BedrockAgentCoreApp()
 
