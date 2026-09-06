@@ -47,6 +47,31 @@ def search_flights(origin: str, destination: str, date: str) -> str:
     return json.dumps(results, indent=2)
 
 
+@tool
+def search_hotels(city: str, max_price_usd: float = None) -> str:
+    """Search available hotels in a city, optionally filtered by max price.
+
+    Args:
+        city: City name (e.g., "Rome", "Barcelona", "London", "Paris", "Tokyo").
+        max_price_usd: Optional maximum price per night in USD. If omitted, all hotels in the city are returned.
+
+    Returns:
+        A list of matching hotels with name, rating, price, and amenities.
+    """
+    with open(DATASETS_DIR / "hotels.json") as f:
+        hotels = json.load(f)
+
+    results = [hotel for hotel in hotels if hotel["city"] == city]
+
+    if max_price_usd is not None:
+        results = [hotel for hotel in results if hotel["price_usd"] <= max_price_usd]
+
+    if not results:
+        return f"No hotels found in {city}" + (f" under ${max_price_usd}/night" if max_price_usd else "") + "."
+
+    return json.dumps(results, indent=2)
+
+
 @app.entrypoint
 async def invoke(payload: dict, context=None):
     user_message = payload.get("message", "Hello!")
