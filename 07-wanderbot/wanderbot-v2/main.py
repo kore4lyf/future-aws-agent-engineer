@@ -16,6 +16,37 @@ When asked to calculate costs, tips, totals, durations, or percentages,
 use the calculator tool. Keep answers friendly, concise, travel-focused."""
 
 
+DATASETS_DIR = Path(__file__).parent / "datasets"
+
+
+@tool
+def search_flights(origin: str, destination: str, date: str) -> str:
+    """Search available flights by origin, destination, and date.
+
+    Args:
+        origin: IATA airport code for departure city (e.g., "BCN", "FCO", "LHR").
+        destination: IATA airport code for arrival city (e.g., "FCO", "LHR", "CDG").
+        date: Travel date in YYYY-MM-DD format (e.g., "2026-03-20").
+
+    Returns:
+        A list of matching flights with airline, times, price, and status.
+    """
+    with open(DATASETS_DIR / "flights.json") as f:
+        flights = json.load(f)
+
+    results = [
+        flight for flight in flights
+        if flight["origin"] == origin
+        and flight["destination"] == destination
+        and flight["departure"].startswith(date)
+    ]
+
+    if not results:
+        return f"No flights found from {origin} to {destination} on {date}."
+
+    return json.dumps(results, indent=2)
+
+
 @app.entrypoint
 async def invoke(payload: dict, context=None):
     user_message = payload.get("message", "Hello!")
