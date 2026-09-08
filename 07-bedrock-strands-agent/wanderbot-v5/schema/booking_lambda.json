@@ -1,0 +1,30 @@
+[
+  {
+    "name": "get_booking",
+    "description": "Retrieve a booking by its reference number.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "booking_ref": {
+          "type": "string",
+          "description": "Booking reference number (e.g. BK-1001)"
+        }
+      },
+      "required": ["booking_ref"]
+    }
+  },
+  {
+    "name": "list_bookings_by_email",
+    "description": "List all bookings associated with a customer email address.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Customer email address (e.g. alice@example.com)"
+        }
+      },
+      "required": ["email"]
+    }
+  }
+]
