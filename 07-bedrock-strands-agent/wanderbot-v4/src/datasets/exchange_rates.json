@@ -1,0 +1,17 @@
+[
+  {"currency_code": "EUR", "currency_name": "Euro", "rate_to_usd": 0.92},
+  {"currency_code": "GBP", "currency_name": "British Pound", "rate_to_usd": 0.79},
+  {"currency_code": "JPY", "currency_name": "Japanese Yen", "rate_to_usd": 149.50},
+  {"currency_code": "CHF", "currency_name": "Swiss Franc", "rate_to_usd": 0.88},
+  {"currency_code": "CAD", "currency_name": "Canadian Dollar", "rate_to_usd": 1.36},
+  {"currency_code": "AUD", "currency_name": "Australian Dollar", "rate_to_usd": 1.53},
+  {"currency_code": "CNY", "currency_name": "Chinese Yuan", "rate_to_usd": 7.24},
+  {"currency_code": "INR", "currency_name": "Indian Rupee", "rate_to_usd": 83.12},
+  {"currency_code": "MXN", "currency_name": "Mexican Peso", "rate_to_usd": 17.15},
+  {"currency_code": "BRL", "currency_name": "Brazilian Real", "rate_to_usd": 4.97},
+  {"currency_code": "KRW", "currency_name": "South Korean Won", "rate_to_usd": 1325.00},
+  {"currency_code": "SGD", "currency_name": "Singapore Dollar", "rate_to_usd": 1.34},
+  {"currency_code": "SEK", "currency_name": "Swedish Krona", "rate_to_usd": 10.42},
+  {"currency_code": "NOK", "currency_name": "Norwegian Krone", "rate_to_usd": 10.65},
+  {"currency_code": "TRY", "currency_name": "Turkish Lira", "rate_to_usd": 32.50}
+]
