@@ -1,0 +1,46 @@
+[
+  {
+    "hotel_id": "HT101",
+    "name": "Barceloneta Beach Hotel",
+    "city": "Barcelona",
+    "star_rating": 4,
+    "price_per_night_usd": 149.0,
+    "available": true,
+    "room_types": ["Double", "Suite"],
+    "amenities": ["WiFi", "Pool", "Beach Access"],
+    "check_in_time": "15:00",
+    "check_out_time": "11:00",
+    "cancellation_policy": "Free cancellation up to 24h"
+  },
+  {
+    "hotel_id": "HT102",
+    "name": "Hotel Casa Marina",
+    "city": "Barcelona",
+    "star_rating": 3,
+    "price_per_night_usd": "check website",
+    "available": true,
+    "room_types": ["Single", "Double"],
+    "amenities": ["WiFi"]
+  },
+  {
+    "hotel_id": "HT103",
+    "name": "Gothic Quarter Inn",
+    "city": "Barcelona",
+    "available": true,
+    "room_types": ["Single"],
+    "amenities": ["WiFi", "Breakfast"]
+  },
+  {
+    "hotel_id": "HT201",
+    "name": "Madrid Grand Plaza",
+    "city": "Madrid",
+    "star_rating": 5,
+    "price_per_night_usd": 220.0,
+    "available": true,
+    "room_types": ["Double", "Suite", "Presidential"],
+    "amenities": ["WiFi", "Spa", "Gym", "Restaurant"],
+    "check_in_time": "14:00",
+    "check_out_time": "12:00",
+    "cancellation_policy": "Free cancellation up to 48h"
+  }
+]

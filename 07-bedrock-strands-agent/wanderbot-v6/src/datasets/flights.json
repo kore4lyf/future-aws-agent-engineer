@@ -1,0 +1,17 @@
+[
+  {"flight_number": "HZ-101", "origin": "BCN", "destination": "FCO", "date": "2026-03-20", "price_usd": 189.0, "available_seats": 12, "status": "SCHEDULED", "cabin_class": "Economy"},
+  {"flight_number": "HZ-102", "origin": "BCN", "destination": "FCO", "date": "2026-03-20", "price_usd": 145.0, "available_seats": 5, "status": "SCHEDULED", "cabin_class": "Economy"},
+  {"flight_number": "HZ-103", "origin": "BCN", "destination": "FCO", "date": "2026-03-20", "price_usd": 99.0, "available_seats": 2, "status": "DELAYED", "cabin_class": "Economy"},
+  {"flight_number": "HZ-104", "origin": "FCO", "destination": "BCN", "date": "2026-03-20", "price_usd": 175.0, "available_seats": 8, "status": "SCHEDULED", "cabin_class": "Economy"},
+  {"flight_number": "HZ-105", "origin": "BCN", "destination": "LHR", "date": "2026-03-20", "price_usd": 210.0, "available_seats": 15, "status": "SCHEDULED", "cabin_class": "Economy"},
+  {"flight_number": "HZ-106", "origin": "BCN", "destination": "LHR", "date": "2026-03-20", "price_usd": 125.0, "available_seats": 20, "status": "SCHEDULED", "cabin_class": "Economy"},
+  {"flight_number": "HZ-107", "origin": "BCN", "destination": "FRA", "date": "2026-03-20", "price_usd": 195.0, "available_seats": 7, "status": "SCHEDULED", "cabin_class": "Economy"},
+  {"flight_number": "HZ-108", "origin": "BCN", "destination": "CDG", "date": "2026-03-20", "price_usd": 165.0, "available_seats": 10, "status": "SCHEDULED", "cabin_class": "Economy"},
+  {"flight_number": "HZ-109", "origin": "BCN", "destination": "AMS", "date": "2026-03-20", "price_usd": 180.0, "available_seats": 6, "status": "SCHEDULED", "cabin_class": "Economy"},
+  {"flight_number": "HZ-110", "origin": "BCN", "destination": "ZRH", "date": "2026-03-20", "price_usd": 205.0, "available_seats": 4, "status": "SCHEDULED", "cabin_class": "Economy"},
+  {"flight_number": "HZ-111", "origin": "BCN", "destination": "IST", "date": "2026-03-20", "price_usd": 220.0, "available_seats": 9, "status": "SCHEDULED", "cabin_class": "Economy"},
+  {"flight_number": "HZ-112", "origin": "BCN", "destination": "OSL", "date": "2026-03-20", "price_usd": 155.0, "available_seats": 3, "status": "DELAYED", "cabin_class": "Economy"},
+  {"flight_number": "HZ-113", "origin": "MAD", "destination": "FCO", "date": "2026-03-20", "price_usd": 199.0, "available_seats": 11, "status": "SCHEDULED", "cabin_class": "Economy"},
+  {"flight_number": "HZ-114", "origin": "FCO", "destination": "LHR", "date": "2026-03-20", "price_usd": 185.0, "available_seats": 14, "status": "SCHEDULED", "cabin_class": "Economy"},
+  {"flight_number": "HZ-115", "origin": "BCN", "destination": "DUB", "date": "2026-03-20", "price_usd": 140.0, "available_seats": 18, "status": "SCHEDULED", "cabin_class": "Economy"}
+]
