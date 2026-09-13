@@ -6,12 +6,12 @@ Horizon Travel's AI travel assistant built with Strands Agents and Amazon Bedroc
 
 | Version | Directory | Features |
 |---------|-----------|----------|
-| v1 | `wanderbot/` | Basic agent with calculator, current time, travel persona |
-| v2 | `wanderbot-v2/` | Function calling with flight search, hotel search, currency exchange |
-| v3 | `wanderbot-v3/` | Structured outputs with Pydantic validation, machine-readable JSON |
-| v4 | `wanderbot-v4/` | AgentCore Memory — session-scoped short-term memory via HookProvider |
-| v5 | `wanderbot-v5/` | AgentCore Gateway — Lambda booking tools via MCPClient |
-| v6 | `wanderbot-v6/` | AgentCore Identity — managed API keys, Gateway injected `x-api-key` |
+| v1 | `wanderbot/wanderbot-v1/` | Basic agent with calculator, current time, travel persona |
+| v2 | `wanderbot/wanderbot-v2/` | Function calling with flight search, hotel search, currency exchange |
+| v3 | `wanderbot/wanderbot-v3/` | Structured outputs with Pydantic validation, machine-readable JSON |
+| v4 | `wanderbot/wanderbot-v4/` | AgentCore Memory — session-scoped short-term memory via HookProvider |
+| v5 | `wanderbot/wanderbot-v5/` | AgentCore Gateway — Lambda booking tools via MCPClient |
+| v6 | `wanderbot/wanderbot-v6/` | AgentCore Identity — managed API keys, Gateway injected `x-api-key` |
 
 ## Feature Comparison
 
@@ -38,6 +38,12 @@ Horizon Travel's AI travel assistant built with Strands Agents and Amazon Bedroc
 | Lambda booking tools | — | — | — | — | ✅ | ✅ |
 | AgentCore Identity | — | — | — | — | — | ✅ |
 
+## Standalone Examples
+
+| Example | Directory | Purpose |
+|---------|-----------|---------|
+| Web Browser Search Agent | `web-browser-search-agent/` | Browser-only AgentCore Browser demo (not WanderBot) |
+
 ## Datasets (v2+)
 
 - `datasets/flights.json` — 15 flights
@@ -47,11 +53,11 @@ Horizon Travel's AI travel assistant built with Strands Agents and Amazon Bedroc
 ## Quick Start
 
 ```bash
-cd wanderbot-v6 && agentcore dev
+cd wanderbot/wanderbot-v6 && agentcore dev
 ```
 
 ## Deploy
 
 ```bash
-cd wanderbot-v6 && agentcore deploy
+cd wanderbot/wanderbot-v6 && agentcore deploy
 ```

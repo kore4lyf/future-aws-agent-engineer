@@ -1,0 +1,28 @@
+default_agent: web-browser-search-agent
+agents:
+  web-browser-search-agent:
+    name: web-browser-search-agent
+    language: python
+    node_version: null
+    entrypoint: main.py
+    deployment_type: direct_code_deploy
+    runtime_type: PYTHON_3_10
+    platform: linux/amd64
+    container_runtime: null
+    source_path: .
+    aws:
+      execution_role_auto_create: true
+      account: null
+      region: us-east-1
+      ecr_repository: null
+      ecr_auto_create: false
+      network_configuration:
+        network_mode: PUBLIC
+        network_mode_config: null
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: false
+    memory:
+      mode: NO_MEMORY
+    authorizer_configuration: null

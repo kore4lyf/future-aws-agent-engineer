@@ -1,0 +1,11 @@
+README.md
+pyproject.toml
+src/__init__.py
+src/main.py
+src/prompts/__init__.py
+src/prompts/system.py
+src/web_browser_search_agent.egg-info/PKG-INFO
+src/web_browser_search_agent.egg-info/SOURCES.txt
+src/web_browser_search_agent.egg-info/dependency_links.txt
+src/web_browser_search_agent.egg-info/requires.txt
+src/web_browser_search_agent.egg-info/top_level.txt
