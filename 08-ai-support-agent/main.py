@@ -28,7 +28,10 @@ import os
 import uuid
 
 import boto3
+from pydantic import ValidationError
 from bedrock_agentcore.memory import MemoryClient
+from conversation import TokenBudgetManager
+from schemas import AgentResponse, DiscountInput, DiscountResult, InvokePayload
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from bedrock_agentcore.tools.code_interpreter_client import code_session
 from mcp.client.streamable_http import streamable_http_client
@@ -331,6 +334,19 @@ def calculate_loyalty_discount(
     Returns:
         Full discount breakdown and final price
     """
+    try:
+        validated_input = DiscountInput(
+            loyalty_points=loyalty_points,
+            tier=tier,
+            order_total=order_total,
+            product_category=product_category,
+        )
+    except ValidationError as e:
+        return json.dumps({"error": f"Invalid discount input: {e.errors()}"})
+    loyalty_points = validated_input.loyalty_points
+    tier = validated_input.tier
+    order_total = validated_input.order_total
+    product_category = validated_input.product_category
     code = f"""
 import json
 loyalty_points = {loyalty_points}
@@ -361,7 +377,12 @@ print(json.dumps({{"points_redeemed": points_redeemed, "tier_discount_pct": int(
                 {"code": code, "language": "python", "clearContext": True},
             )
         for event in resp["stream"]:
-            return json.dumps(event["result"])
+            raw = event["result"]
+            try:
+                DiscountResult(**raw)
+            except ValidationError as e:
+                return json.dumps({"error": f"Invalid discount result: {e.errors()}"})
+            return json.dumps(raw)
         return json.dumps({"error": "Empty code interpreter result"})
 
     except Exception as e:
@@ -409,9 +430,13 @@ async def invoke(payload, context=None):
       customer_id (str, optional) — unique customer identifier
       session_id  (str, optional) — session identifier; generated if absent
     """
-    prompt = payload.get("prompt", "Hello!")
-    actor_id = payload.get("customer_id", "CUST-123")
-    session_id = payload.get("session_id") or str(uuid.uuid4())
+    try:
+        validated = InvokePayload(**(payload or {}))
+    except ValidationError as e:
+        return f"Error: invalid input: {e.errors()}"
+    prompt = validated.prompt
+    actor_id = validated.customer_id
+    session_id = validated.session_id or str(uuid.uuid4())
     browser = AgentCoreBrowser(region=REGION)
     tools = [search_knowledge_base, calculate_loyalty_discount, browser.browser]
     hook = MemoryHook(actor_id, session_id, memory_client, MEMORY_ID)
@@ -424,13 +449,18 @@ async def invoke(payload, context=None):
                 system_prompt="You are a customer support assistant. Use Gateway tools for orders.",
                 tools=tools,
                 hooks=[hook],
+                conversation_manager=TokenBudgetManager(),
                 state={"session_id": session_id, "actor_id": actor_id},
             )
             result = agent(prompt)
             try:
-                return result.message["content"][0]["text"]
+                text = result.message["content"][0]["text"]
             except Exception:
-                return str(result)
+                text = str(result)
+            try:
+                return AgentResponse(response=text).response
+            except ValidationError:
+                return "Error: agent returned an empty response"
     except Exception as e:
         return f"Error: {e}"
 

@@ -20,9 +20,23 @@ That schema tells the Gateway which arguments to pass for each tool.
 """
 
 import json
+import os
 import random
 import string
+import sys
 from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from pydantic import ValidationError
+from schemas.refund import RefundRequest, RefundResult
+
+
+def _validate_refund(data: dict) -> dict:
+    try:
+        return RefundResult(**data).model_dump(exclude_none=True)
+    except ValidationError:
+        return data
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -62,17 +76,30 @@ def lambda_handler(event, context):
 
     # ── initiate_refund ───────────────────────────────────────────────────────
     if tool == "initiate_refund":
+        try:
+            RefundRequest(
+                order_id=event.get("order_id", ""),
+                reason=event.get("reason"),
+                amount=event.get("amount", 0),
+            )
+        except ValidationError:
+            return {
+                "statusCode": 400,
+                "body": json.dumps({"error": "order_id is required"}),
+            }
         return {
             "statusCode": 200,
             "body": json.dumps(
-                {
-                    "refund_id": _new_refund_id(),
-                    "order_id": event.get("order_id"),
-                    "status": "APPROVED",
-                    "amount": event.get("amount", 0),  # default to 0 if not supplied
-                    "message": "Refund approved. Credit appears in 3-5 business days.",
-                    "created_at": datetime.utcnow().isoformat(),
-                }
+                _validate_refund(
+                    {
+                        "refund_id": _new_refund_id(),
+                        "order_id": event.get("order_id"),
+                        "status": "APPROVED",
+                        "amount": event.get("amount", 0),
+                        "message": "Refund approved. Credit appears in 3-5 business days.",
+                        "created_at": datetime.utcnow().isoformat(),
+                    }
+                )
             ),
         }
 

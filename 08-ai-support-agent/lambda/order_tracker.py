@@ -18,7 +18,28 @@ integration.
 """
 
 import json
+import os
+import sys
 from datetime import datetime, timedelta
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from pydantic import ValidationError
+from schemas.order import Customer, Order
+
+
+def _validate_order(data: dict) -> dict:
+    try:
+        return Order(**data).model_dump(exclude_none=True)
+    except ValidationError:
+        return data
+
+
+def _validate_customer(data: dict) -> dict:
+    try:
+        return Customer(**data).model_dump()
+    except ValidationError:
+        return data
 
 # ── Sample data ───────────────────────────────────────────────────────────────
 # Returned as a fresh dict on every call so state is never shared across
@@ -120,7 +141,7 @@ def lambda_handler(event, context):
         order = orders.get(order_id)
         if not order:
             return _response(404, {"error": f"Order {order_id} not found"})
-        return _response(200, order)
+        return _response(200, _validate_order(order))
 
     # ── GET /customers/{customer_id}/orders ───────────────────────────────────
     if resource == "/customers/{customer_id}/orders" and method == "GET":
@@ -137,7 +158,7 @@ def lambda_handler(event, context):
         customer = customers.get(cid)
         if not customer:
             return _response(404, {"error": f"Customer {cid} not found"})
-        return _response(200, customer)
+        return _response(200, _validate_customer(customer))
 
     # ── Unrecognised route ────────────────────────────────────────────────────
     return _response(400, {"error": "Unrecognised route", "resource": resource})

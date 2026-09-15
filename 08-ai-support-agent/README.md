@@ -321,3 +321,26 @@ agentcore invoke '{"prompt": "Go to https://www.amazon.com and tell me the page 
 - [Strands Agents Documentation](https://strandsagents.com)
 - [MCP Inspector](https://github.com/modelcontextprotocol/inspector)
 - [uv Package Manager](https://docs.astral.sh/uv/)
+
+---
+
+## Implementation Notes
+
+Two additions beyond the starter brief, both in this repo:
+
+### Structured output validation (`schemas/`)
+
+Pydantic models validate tool responses and agent outputs before they reach the user:
+
+| Module | Models | Validates |
+|---|---|---|
+| `schemas/payload.py` | `InvokePayload`, `AgentResponse` | Incoming `prompt`/`customer_id`/`session_id`; non-empty agent replies |
+| `schemas/order.py` | `OrderItem`, `Order`, `Customer` | `order-tracker` Lambda data (status enum, quantities, totals) |
+| `schemas/discount.py` | `DiscountInput`, `DiscountResult` | `calculate_loyalty_discount` args and Code Interpreter results |
+| `schemas/refund.py` | `RefundRequest`, `RefundResult` | `refund-processor` Lambda requests and results |
+
+`main.py` rejects bad payloads, bad discount inputs, and malformed Code Interpreter output with a JSON error instead of passing it through. Both Lambda handlers import the same schemas (zip `schemas/` alongside the handler and add `pydantic` via a layer or vendored deps — the Lambda console's inline editor can't resolve the import).
+
+### Conversation summarization (`conversation.py`)
+
+`TokenBudgetManager`, a `SummarizingConversationManager` subclass, summarizes older turns once in-memory session history exceeds a 20,000-token budget (estimated at 4 chars/token across text plus tool inputs/outputs). It summarizes the oldest 30%, always keeps the last 10 messages verbatim, never splits toolUse/toolResult pairs, and enables `proactive_compression` so the model's own context window acts as a backstop. This bounds context size and cost on long sessions; cross-session recall remains the job of the AgentCore Memory hook.
