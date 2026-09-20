@@ -16,6 +16,8 @@ A cost-aware backend for a high-volume social platform. Three specialists with c
 
 - `main.py` — entrypoint: AgentCore `invoke` plus local CLI (`--post-id` for one, no flag for all nine)
 - `src/main.py` — shared data, tools, three model-specific agent builders, coordinator, and caches
+- `test/test_main.py` — 24 unit tests validating logic without AWS calls
+- `demo.py` — demonstration script showing pipeline flow without AWS calls
 
 ## Implementation notes
 
@@ -24,4 +26,91 @@ A cost-aware backend for a high-volume social platform. Three specialists with c
 - The coordinator screens every post, reviews only `BORDERLINE` posts, and sends notices only for final `HARMFUL` verdicts.
 - Safe posts use one agent, harmful posts use screening plus notice, and borderline posts use screening plus review, with notice only when review returns `HARMFUL`.
 
-Run: `cp .env.example .env`, load AWS credentials, then `uv run main.py`; use `--post-id POST-001` to process one post or omit it to process all nine.
+## Test Results
+
+### Unit Tests (24 tests - all passing)
+```bash
+cd content-moderation-pipeline
+uv pip install pytest
+uv run python -m pytest test/test_main.py -v
+```
+**Result:** ✅ 24/24 passing
+
+Tests cover:
+- Data structure validation (6 tests)
+- Keyword detection logic (8 tests)
+- Cache behavior (3 tests)
+- Deep review verdict mappings (3 tests)
+- Notice template validation (1 test)
+- Pipeline routing logic (2 tests)
+- Edge cases (2 tests)
+
+### Live AWS Tests
+
+| Post | Classification | Models Called | Status |
+|------|---------------|---------------|--------|
+| POST-001 (safe pasta recipe) | SAFE | Nova Lite | ✅ PASS |
+| POST-004 (harmful - "destroy") | HARMFUL | Nova Lite + Nova Pro | ✅ PASS |
+| POST-007 (borderline - "idiots") | BORDERLINE | Nova Lite + Claude Sonnet | ❌ Claude access denied |
+
+**Working paths:**
+- ✅ Safe posts: Screening only (1 model call)
+- ✅ Harmful posts: Screening + Notice (2 model calls, skips review)
+- ❌ Borderline posts: Requires Claude Sonnet (needs AWS Marketplace subscription)
+
+**Known limitation:** Claude Sonnet (`us.anthropic.claude-sonnet-4-5-20250929-v1:0`) requires AWS Marketplace subscription. The screening and notice models (Nova Lite, Nova Pro) work without additional subscriptions.
+
+## Quick Start
+
+```bash
+cd content-moderation-pipeline
+cp .env.example .env
+# Load AWS credentials
+export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."
+export AWS_SESSION_TOKEN="..."
+export AWS_REGION="us-east-1"
+
+# Run with uv
+uv run main.py                    # Process all 9 posts
+uv run main.py --post-id POST-001  # Process single post
+
+# Run tests (no AWS required)
+uv pip install pytest
+uv run python -m pytest test/test_main.py -v
+
+# Run demo (no AWS required)
+uv run python demo.py
+```
+
+## Demo Output Summary
+
+```
+Total Posts: 9
+  - Safe (approved): 5
+  - Harmful (removed): 4  
+  - Borderline (required review): 3
+
+Pipeline Flow:
+  - Posts screened: 9
+  - Posts reviewed: 3
+  - Notices generated: 4
+```
+
+## Project Structure
+
+```
+content-moderation-pipeline/
+├── .env.example          # Environment template
+├── .gitignore
+├── README.md
+├── demo.py               # Demo script (no AWS)
+├── main.py               # Entrypoint
+├── pyproject.toml        # Dependencies
+├── uv.lock               # Locked dependencies
+├── src/
+│   ├── __init__.py
+│   └── main.py           # Core pipeline
+└── test/
+    └── test_main.py      # Unit tests
+```

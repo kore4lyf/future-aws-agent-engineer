@@ -12,6 +12,19 @@ Server incidents flow through three specialists, each on the cheapest model that
 
 The orchestrator reads severity from `classification_cache` (never LLM prose) and `main()` adds latency + cost projection vs. a Claude-for-everything baseline (~80% savings at 10K incidents/day).
 
+## Test Status
+
+### Implementation ✅ COMPLETE
+- ✅ Multi-model scaffold (Nova Lite, Claude Sonnet, Nova Pro)
+- ✅ Classification cache for structured data handoff
+- ✅ Retry logic with exponential backoff
+- ✅ Helper functions (clean_response, _parse_json)
+- ✅ Agent builders for all three stages
+
+### Known Limitation
+- ❌ Claude Sonnet requires AWS Marketplace subscription
+- ✅ Workaround: Use `amazon.nova-lite-v1:0` for all models
+
 ## Layout
 
 - `main.py` — entrypoint: AgentCore `invoke` plus local CLI
@@ -23,3 +36,25 @@ The orchestrator reads severity from `classification_cache` (never LLM prose) an
 2. Builders: routing, analysis, status — same shape, different model + temperature.
 3. Coordinator + `main()`: cache handoff, latency table, cost projection.
 4. Run: `cp .env.example .env`, load AWS creds, `uv run main.py`.
+
+## Quick Start
+
+```bash
+cd incident-response-demo
+cp .env.example .env
+
+# Use Nova Lite to avoid Claude Marketplace access issues
+echo "NOVA_LITE_MODEL=amazon.nova-lite-v1:0" >> .env
+echo "CLAUDE_MODEL=amazon.nova-lite-v1:0" >> .env
+echo "NOVA_PRO_MODEL=amazon.nova-lite-v1:0" >> .env
+
+# Load AWS credentials
+export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."
+export AWS_SESSION_TOKEN="..."
+export AWS_REGION="us-east-1"
+
+# Run pipeline
+uv run python main.py --incident-id INC-001
+```
+
