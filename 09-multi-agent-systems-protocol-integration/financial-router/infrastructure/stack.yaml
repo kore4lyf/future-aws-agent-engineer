@@ -1,0 +1,24 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: DynamoDB table for routing audit log (24-hour TTL)
+
+Resources:
+  RoutingAuditTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: routing-audit
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: request_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: request_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+Outputs:
+  TableName:
+    Value: !Ref RoutingAuditTable
+  TableArn:
+    Value: !GetAtt RoutingAuditTable.Arn
