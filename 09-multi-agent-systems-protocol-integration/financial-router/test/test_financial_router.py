@@ -3,6 +3,7 @@ import os
 import sys
 from unittest.mock import patch, MagicMock
 
+import boto3
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -11,7 +12,7 @@ os.environ.setdefault("AWS_ACCESS_KEY_ID", "")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "")
 os.environ.setdefault("AWS_SESSION_TOKEN", "")
 os.environ.setdefault("AWS_REGION", "us-east-1")
-os.environ.setdefault("DYNAMODB_TABLE", "routing-audit-test")
+os.environ.setdefault("DYNAMODB_TABLE", "routing-audit")
 
 import financial_router as fr
 
@@ -91,8 +92,7 @@ def test_req008_high_value_25k_to_senior_review():
 # --- REQ-009: ambiguous → LLM classifier (high confidence) ---
 
 def test_req009_ambiguous_to_llm_classifier():
-    mock_result = json.dumps({"intent": "payments", "confidence": 0.85})
-    with patch("financial_router.run_agent_with_retry", return_value=mock_result):
+    with patch("financial_router.llm_classify", return_value=("payments", 0.85, {"intent": "payments", "confidence": 0.85})):
         request = {"id": "REQ-009", "text": "I need help moving some funds around", "amount": 0}
         result = fr.hybrid_route(request)
     assert result["target_agent"] == "PaymentsAgent"
@@ -103,8 +103,7 @@ def test_req009_ambiguous_to_llm_classifier():
 # --- REQ-010: nonsensical → GeneralSupportAgent (fallback) ---
 
 def test_req010_nonsensical_to_fallback():
-    mock_result = json.dumps({"intent": "general", "confidence": 0.2})
-    with patch("financial_router.run_agent_with_retry", return_value=mock_result):
+    with patch("financial_router.llm_classify", return_value=("general", 0.2, {"intent": "general", "confidence": 0.2})):
         request = {"id": "REQ-010", "text": "purple elephant dancing on mars", "amount": 0}
         result = fr.hybrid_route(request)
     assert result["target_agent"] == "GeneralSupportAgent"
@@ -139,7 +138,26 @@ def test_process_request_returns_full_result():
     assert "latency_ms" in result
 
 
-# --- Live test skipped ---
+# --- Live test: real DynamoDB write with AWS credentials ---
 
 def test_live_pipeline_runs_with_aws_credentials():
-    pytest.skip("Requires deployed DynamoDB table and valid AWS credentials")
+    if not os.getenv("AWS_ACCESS_KEY_ID"):
+        pytest.skip("AWS credentials are not set")
+
+    # Use the deployed routing-audit table, not the test table name
+    table = boto3.resource("dynamodb", region_name="us-east-1").Table("routing-audit")
+
+    request = {"id": "LIVE-001", "text": "Please check my account balance", "amount": 0}
+    result = fr.process_request(request)
+
+    # Rule-based routing should succeed without LLM
+    assert result["target_agent"] == "AccountAgent"
+    assert result["method"] == "rule"
+    assert result["confidence"] == 1.0
+
+    # Verify the audit record was written to DynamoDB
+    item = table.get_item(Key={"request_id": "LIVE-001"}).get("Item")
+    assert item is not None, "Audit record not found in DynamoDB"
+    assert item["target_agent"] == "AccountAgent"
+    assert item["method"] == "rule"
+    assert "ttl" in item

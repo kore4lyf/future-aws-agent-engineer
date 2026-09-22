@@ -17,6 +17,7 @@ import os
 import re
 import time
 import uuid
+from decimal import Decimal
 from datetime import datetime, timezone
 
 import boto3
@@ -50,8 +51,24 @@ CONFIDENCE_THRESHOLD = 0.6
 
 
 def clean_response(text: str) -> str:
-    """Strip <thinking> tags from model output."""
-    return re.sub(r"<thinking>.*?</thinking>", "", str(text), flags=re.DOTALL).strip()
+    """Strip <thinking> tags and extract JSON from model output.
+
+    The classifier agent may include prose around the JSON tool result,
+    so we find the first valid JSON object in the text.
+    If no JSON is found, return the cleaned text as-is.
+    """
+    text = re.sub(r"<thinking>.*?</thinking>", "", str(text), flags=re.DOTALL).strip()
+    # Try to extract JSON object from the response
+    start = text.find("{")
+    if start != -1:
+        end = text.rfind("}") + 1
+        candidate = text[start:end]
+        try:
+            json.loads(candidate)
+            return candidate
+        except json.JSONDecodeError:
+            pass
+    return text
 
 
 def run_agent_with_retry(agent_builder, prompt: str, max_retries: int = 3) -> str:
@@ -89,7 +106,8 @@ def build_classifier_agent() -> Agent:
     system_prompt = """You are an intent classifier for a financial services platform.
 Classify the customer request into ONE of: payments, fraud, account, general.
 Confidence: 0.8-1.0 if clear, 0.5-0.7 if ambiguous, low if nonsensical.
-Call classify_intent ONCE. Do NOT add commentary."""
+Call classify_intent ONCE with the intent and confidence.
+Return ONLY the JSON result from the tool. Do NOT add any commentary."""
 
     @tool
     def classify_intent(intent: str, confidence: float) -> str:
@@ -105,10 +123,28 @@ def llm_classify(text: str) -> tuple[str, float, dict]:
     """Run the classifier agent and extract intent + confidence.
 
     Returns (intent, confidence, raw_result_dict).
+    Handles both structured JSON and prose responses from the model.
     """
-    result = run_agent_with_retry(build_classifier_agent, f"Classify this request: {text}")
-    parsed = json.loads(result)
-    return parsed.get("intent", "general"), parsed.get("confidence", 0.0), parsed
+    agent = build_classifier_agent()
+    result = agent(f"Classify this request: {text}")
+    result_str = str(result)
+    # Try to extract JSON first (from tool output)
+    start = result_str.find("{")
+    if start != -1:
+        end = result_str.rfind("}") + 1
+        candidate = result_str[start:end]
+        try:
+            parsed = json.loads(candidate)
+            return parsed.get("intent", "general"), parsed.get("confidence", 0.0), parsed
+        except json.JSONDecodeError:
+            pass
+    # Fallback: extract intent and confidence from prose using regex
+    # Search the full string including thinking tags
+    intent_match = re.search(r"(payments|fraud|account|general)", result_str.lower())
+    conf_match = re.search(r"confidence of (\d+\.?\d*)", result_str)
+    intent = intent_match.group(1) if intent_match else "general"
+    confidence = float(conf_match.group(1)) if conf_match else 0.5
+    return intent, confidence, {"intent": intent, "confidence": confidence}
 
 
 # ============================================================================
@@ -170,8 +206,8 @@ def log_routing_decision(request_id: str, method: str, target_agent: str, confid
             "timestamp": now.isoformat(),
             "method": method,
             "target_agent": target_agent,
-            "confidence": confidence,
-            "latency_ms": latency_ms,
+            "confidence": Decimal(str(confidence)),
+            "latency_ms": Decimal(str(latency_ms)),
             "ttl": ttl_epoch,
         }
     )
