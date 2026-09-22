@@ -1,0 +1,24 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: DynamoDB table for telecom routing audit log (24-hour TTL)
+
+Resources:
+  TelecomRoutingAuditTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: telecom-routing-audit
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: request_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: request_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+Outputs:
+  TableName:
+    Value: !Ref TelecomRoutingAuditTable
+  TableArn:
+    Value: !GetAtt TelecomRoutingAuditTable.Arn
