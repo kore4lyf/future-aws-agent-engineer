@@ -1,0 +1,19 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: S3 source bucket for lesson 8 research assistant RAG demo (CS/Bio/drugs/guidelines documents)
+
+Resources:
+  SourceDocumentsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "lesson08-rag-source-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+Outputs:
+  SourceBucketName:
+    Value: !Ref SourceDocumentsBucket
+  SourceBucketArn:
+    Value: !GetAtt SourceDocumentsBucket.Arn

@@ -1,6 +1,6 @@
 # Multi-Agent Systems Protocol Integration
 
-Fourteen projects covering sequential, parallel, conditional, hierarchical, shared-state, and saga agent orchestration on Amazon Bedrock.
+Fifteen projects covering sequential, parallel, conditional, hierarchical, shared-state, saga, and RAG agent orchestration on Amazon Bedrock.
 
 ## Projects (chronological order)
 
@@ -20,6 +20,7 @@ Fourteen projects covering sequential, parallel, conditional, hierarchical, shar
 | 12 | `12-food-delivery-state` | Shared state, optimistic locking, 4 agents, recovery | ✅ 22 tests |
 | 13 | `13-travel-booking-saga` | Saga orchestration, reverse compensation, barrier, lock | ✅ 22 tests |
 | 14 | `14-ecommerce-checkout-saga` | Checkout saga, tool-owned barrier increments | ✅ 21 tests |
+| 15 | `15-research-assistant-rag` | Parallel multi-KB RAG, aggregate/dedup, grounded synthesis | ✅ unit tests |
 
 Each project has its own `pyproject.toml`, tests under `test/`, and `.env.example`; READMEs exist except for 06–09.
 
@@ -85,6 +86,11 @@ uv run python main.py
 cd 14-ecommerce-checkout-saga
 uv run --with pytest --with boto3 pytest -q
 uv run python main.py
+
+# Research Assistant RAG (needs CS_KB_ID + BIO_KB_ID in .env)
+cd 15-research-assistant-rag
+uv run --with pytest --with boto3 pytest -q
+uv run python main.py
 ```
 
-Load AWS credentials from your session environment (never commit them). CloudFormation stacks used by the hybrid routers, shared-state, and saga demos: `lesson-05-demo-routing`, `lesson-05-exercise-routing`, `lesson-06-demo-shared-state`, `lesson-06-exercise-shared-state`, `lesson-07-demo-saga`, `lesson-07-exercise-saga`.
+Load AWS credentials from your session environment (never commit them). CloudFormation stacks used by the hybrid routers, shared-state, saga, and RAG demos: `lesson-05-demo-routing`, `lesson-05-exercise-routing`, `lesson-06-demo-shared-state`, `lesson-06-exercise-shared-state`, `lesson-07-demo-saga`, `lesson-07-exercise-saga`, `lesson-08-demo-rag`.
