@@ -1,0 +1,21 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: DynamoDB saga-state table for travel booking saga demo (step state machine, lock, barrier)
+
+Resources:
+  SagaStateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: saga-state
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: saga_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: saga_id
+          KeyType: HASH
+
+Outputs:
+  SagaTableName:
+    Value: !Ref SagaStateTable
+  SagaTableArn:
+    Value: !GetAtt SagaStateTable.Arn
