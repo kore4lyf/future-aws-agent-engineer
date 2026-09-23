@@ -5,14 +5,17 @@
 # Status Track) update the SAME DynamoDB order record simultaneously.
 # Optimistic locking (version + ConditionExpression) prevents lost
 # updates; exponential backoff resolves conflicts. recover_order
-# cleans partial data when an order is rejected.
+# cleans partial data when the restaurant rejects an order.
+# customer_memory (in-process stand-in for AgentCore Memory
+# SESSION_SUMMARY) retains preferences across orders.
 #
 # Architecture:
 #   Shared state:  order-state table (order_id PK, version field, ttl)
 #   Writers:       RestaurantConfirmAgent, DriverAssignAgent,
 #                  PriceCalculatorAgent, StatusTrackerAgent
 #   Locking:       version-based conditional writes + retry/backoff
-#   Recovery:      recover_order — reset driver/price, cancel order
+#   Recovery:      recover_order — reset driver/total_price, cancel
+#   Memory:        customer_memory dict (preferred driver/restaurant)
 # ============================================================================
 
 import json
@@ -44,16 +47,18 @@ order_table = dynamodb.Table(ORDER_TABLE)
 ORDER_TTL_SECONDS = 2 * 60 * 60
 
 # --- Pricing constants (deterministic for tests) ---
-DELIVERY_FEE = 2.99
-SERVICE_RATE = 0.10
+DELIVERY_FEE = 4.99
 TAX_RATE = 0.08
 
-# --- Driver pool (all currently available) ---
-DRIVER_POOL = [
-    {"name": "Marcus", "rating": 4.9, "vehicle": "Toyota Camry"},
-    {"name": "Sofia", "rating": 4.8, "vehicle": "Tesla Model 3"},
-    {"name": "Priya", "rating": 4.7, "vehicle": "Honda Civic"},
+# --- Driver pool ---
+AVAILABLE_DRIVERS = [
+    {"driver_id": "DRV-01", "name": "Marcus", "rating": 4.9, "vehicle": "Toyota Camry"},
+    {"driver_id": "DRV-02", "name": "Sofia", "rating": 4.8, "vehicle": "Tesla Model 3"},
+    {"driver_id": "DRV-03", "name": "Priya", "rating": 4.7, "vehicle": "Honda Civic"},
 ]
+
+# --- Cross-session customer memory (AgentCore SESSION_SUMMARY stand-in) ---
+customer_memory: dict[str, dict] = {}
 
 # --- Cross-process metrics (thread-safe) ---
 _metrics_lock = threading.Lock()
@@ -133,20 +138,25 @@ def _record_conflict() -> None:
 # SHARED STATE — create / read / optimistic update / recover
 # ============================================================================
 
-def create_order(order_id: str, customer: str, restaurant: str,
-                 items: list[dict], distance_mi: float = 5.0) -> dict:
+def create_order(order_id: str, customer_id: str, restaurant: str,
+                 items: list[dict], address: str = "123 Main St",
+                 distance_mi: float = 5.0,
+                 simulate_rejection: bool = False) -> dict:
     """Seed a new order record at version 0 with a 2-hour TTL."""
     now = datetime.now(timezone.utc)
     item = {
         "order_id": order_id,
         "version": 0,
-        "customer": customer,
+        "customer_id": customer_id,
         "restaurant": restaurant,
         "items": to_dynamo(items),
+        "address": address,
         "distance_mi": to_dynamo(float(distance_mi)),
-        "status": "placed",
+        "status": "pending",
         "driver": None,
-        "price": None,
+        "total_price": None,
+        "progress": [],
+        "simulate_rejection": simulate_rejection,
         "created_at": now.isoformat(),
         # DynamoDB TTL attribute: epoch seconds, 2 hours from now
         "ttl": int(now.timestamp()) + ORDER_TTL_SECONDS,
@@ -163,7 +173,7 @@ def get_order(order_id: str) -> dict:
 
 
 def update_order(order_id: str, updates: dict, max_retries: int = 3) -> dict:
-    """Optimistic locking: read -> modify locally -> conditional write.
+    """Optimistic locking with retry: READ version -> MODIFY -> WRITE with condition.
 
     Every agent reads the current version, applies its slice locally,
     bumps the version, and writes back only if the version is unchanged.
@@ -171,76 +181,51 @@ def update_order(order_id: str, updates: dict, max_retries: int = 3) -> dict:
     exponential backoff (0.1s, 0.2s, 0.4s).
     """
     for attempt in range(max_retries):
-        # READ: capture the current version (our "lock token")
+        # READ: fetch current record and capture its version
         current = order_table.get_item(Key={"order_id": order_id})["Item"]
         expected_version = int(current["version"])
 
-        # MODIFY locally and bump the version
+        # MODIFY: apply updates locally and bump the version
         current.update(to_dynamo(updates))
         current["version"] = expected_version + 1
 
         try:
-            # WRITE with a condition on the original version
+            # WRITE: put the record back, conditional on version unchanged
             order_table.put_item(
                 Item=current,
-                ConditionExpression="version = :v",
-                ExpressionAttributeValues={":v": expected_version},
+                ConditionExpression="version = :expected_ver",
+                ExpressionAttributeValues={":expected_ver": expected_version},
             )
             _record_write(order_id, expected_version + 1, list(updates.keys()))
             return from_dynamo(current)
         except ClientError as e:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                # CONFLICT: another agent wrote first — back off and re-READ
                 _record_conflict()
                 if attempt < max_retries - 1:
                     time.sleep(0.1 * (2 ** attempt))  # 0.1s, 0.2s, 0.4s
                 else:
                     raise VersionConflictError(
-                        f"Version conflict on {order_id} after {max_retries} retries"
+                        f"Version conflict after {max_retries} retries"
                     )
             else:
                 raise
+    raise VersionConflictError(f"Version conflict after {max_retries} retries")
 
 
-def recover_order(order_id: str, max_retries: int = 3) -> dict:
-    """Handle order rejection: clean up partial agent-written data.
+def recover_order(order_id: str) -> dict:
+    """State recovery: clean partial agent writes after restaurant rejection.
 
-    Resets driver and price to None and sets status to "cancelled" so a
-    rejected order never keeps half-applied agent writes. Uses the same
-    optimistic lock so a concurrent agent write is never silently
-    overwritten.
+    Resets driver and total_price to None, marks the order cancelled, and
+    appends progress entries explaining what happened — through the same
+    optimistic-locking path so a concurrent writer cannot clobber cleanup.
     """
-    for attempt in range(max_retries):
-        current = order_table.get_item(Key={"order_id": order_id})["Item"]
-        expected_version = int(current["version"])
-
-        if current.get("status") == "cancelled":
-            return from_dynamo(current)
-
-        current["driver"] = None
-        current["price"] = None
-        current["status"] = "cancelled"
-        current["cancelled_at"] = datetime.now(timezone.utc).isoformat()
-        current["version"] = expected_version + 1
-
-        try:
-            order_table.put_item(
-                Item=current,
-                ConditionExpression="version = :v",
-                ExpressionAttributeValues={":v": expected_version},
-            )
-            _record_write(order_id, expected_version + 1, ["recover"])
-            return from_dynamo(current)
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                _record_conflict()
-                if attempt < max_retries - 1:
-                    time.sleep(0.1 * (2 ** attempt))
-                else:
-                    raise VersionConflictError(
-                        f"Version conflict recovering {order_id} after {max_retries} retries"
-                    )
-            else:
-                raise
+    return update_order(order_id, {
+        "driver": None,
+        "total_price": None,
+        "status": "cancelled",
+        "progress": ["Order rejected by restaurant", "Partial updates cleaned up"],
+    })
 
 
 # ============================================================================
@@ -248,45 +233,56 @@ def recover_order(order_id: str, max_retries: int = 3) -> dict:
 # ============================================================================
 
 def confirm_restaurant(order: dict) -> dict:
-    """Deterministic restaurant confirmation: always accepts in-stock items."""
+    """Restaurant accepts unless simulate_rejection is set on the order."""
+    if order.get("simulate_rejection"):
+        return {
+            "confirmed": False,
+            "status": "rejected",
+            "reason": "Restaurant is closed for new orders",
+        }
     return {
-        "restaurant": order["restaurant"],
         "confirmed": True,
-        "eta_minutes": 25 + int(round(float(order.get("distance_mi", 5.0)) * 1.5)),
+        "status": "confirmed",
+        "reason": "Restaurant accepted the order",
     }
 
 
-def select_driver(order_id: str) -> dict:
-    """Pick the highest-rated available driver (deterministic for tests)."""
-    return max(DRIVER_POOL, key=lambda d: d["rating"])
+def select_driver(customer_id: str) -> dict:
+    """Prefer the customer's remembered driver; else highest-rated available.
+
+    Also writes back preferred_driver / favorite_restaurant / usual_address
+    into customer_memory (AgentCore SESSION_SUMMARY stand-in).
+    """
+    memory = customer_memory.get(customer_id, {})
+    preferred = memory.get("preferred_driver")
+
+    if preferred and any(d["driver_id"] == preferred for d in AVAILABLE_DRIVERS):
+        best = next(d for d in AVAILABLE_DRIVERS if d["driver_id"] == preferred)
+        source = "memory"
+    else:
+        best = max(AVAILABLE_DRIVERS, key=lambda d: d["rating"])
+        source = "highest_rated"
+
+    customer_memory.setdefault(customer_id, {})["preferred_driver"] = best["driver_id"]
+    return {**best, "source": source}
 
 
-def compute_price(items: list[dict], distance_mi: float) -> dict:
-    """Deterministic price: subtotal + delivery + service + tax."""
+def compute_price(items: list[dict]) -> dict:
+    """Deterministic price: subtotal + 8% tax + $4.99 delivery fee."""
     subtotal = round(sum(float(i["price"]) * int(i["qty"]) for i in items), 2)
-    delivery = DELIVERY_FEE
-    service = round(subtotal * SERVICE_RATE, 2)
     tax = round(subtotal * TAX_RATE, 2)
-    total = round(subtotal + delivery + service + tax, 2)
+    total_price = round(subtotal + tax + DELIVERY_FEE, 2)
     return {
         "subtotal": subtotal,
-        "delivery_fee": delivery,
-        "service_fee": service,
         "tax": tax,
-        "total": total,
+        "delivery_fee": DELIVERY_FEE,
+        "total_price": total_price,
     }
 
 
-def next_status(current_status: str) -> str:
-    """Status pipeline: placed -> confirmed -> driver_assigned -> out_for_delivery -> delivered."""
-    flow = {
-        "placed": "confirmed",
-        "confirmed": "driver_assigned",
-        "driver_assigned": "out_for_delivery",
-        "out_for_delivery": "delivered",
-        "delivered": "delivered",
-    }
-    return flow.get(current_status, current_status)
+def append_progress(order: dict, entry: str) -> list[str]:
+    progress = order.get("progress") or []
+    return [*progress, entry]
 
 
 # ============================================================================
@@ -310,7 +306,7 @@ def run_agent_with_retry(agent_builder, prompt: str, max_retries: int = 3) -> st
 
 
 def build_restaurant_confirm_agent() -> Agent:
-    """Confirm the restaurant accepts the order; writes confirmation via update_order."""
+    """Confirm or reject the order; writes status via update_order."""
     model = BedrockModel(model_id=NOVA_LITE_MODEL, region_name=AWS_REGION, temperature=0.0)
     system_prompt = (
         "You are a restaurant-confirmation agent for a food delivery platform. "
@@ -323,17 +319,20 @@ def build_restaurant_confirm_agent() -> Agent:
         order = get_order(order_id)
         result = confirm_restaurant(order)
         update_order(order_id, {
+            "status": result["status"],
             "restaurant_confirmed": result["confirmed"],
-            "restaurant_eta_minutes": result["eta_minutes"],
-            "status": next_status(order["status"]),
+            "reject_reason": None if result["confirmed"] else result["reason"],
+            "progress": append_progress(order, f"Restaurant: {result['status']}"),
         })
-        return json.dumps({"order_id": order_id, **result})
+        memory = customer_memory.setdefault(order["customer_id"], {})
+        memory["favorite_restaurant"] = order["restaurant"]
+        return json.dumps({"order_id": order_id, **result}, indent=2)
 
     return Agent(model=model, system_prompt=system_prompt, tools=[confirm_restaurant_tool])
 
 
 def build_driver_assign_agent() -> Agent:
-    """Assign a driver; writes driver/vehicle via update_order."""
+    """Assign a driver (memory-aware); writes driver via update_order."""
     model = BedrockModel(model_id=NOVA_LITE_MODEL, region_name=AWS_REGION, temperature=0.0)
     system_prompt = (
         "You are a driver-assignment agent for a food delivery platform. "
@@ -344,24 +343,37 @@ def build_driver_assign_agent() -> Agent:
     @tool
     def assign_driver_tool(order_id: str) -> str:
         order = get_order(order_id)
-        driver = select_driver(order_id)
+        cust_id = order["customer_id"]
+        preferred = customer_memory.get(cust_id, {}).get("preferred_driver")
+
+        if preferred and any(d["driver_id"] == preferred for d in AVAILABLE_DRIVERS):
+            best = next(d for d in AVAILABLE_DRIVERS if d["driver_id"] == preferred)
+            source = "memory"
+        else:
+            best = max(AVAILABLE_DRIVERS, key=lambda d: d["rating"])
+            source = "highest_rated"
+
         update_order(order_id, {
-            "driver": driver["name"],
-            "vehicle": driver["vehicle"],
-            "driver_rating": driver["rating"],
-            "status": next_status(order["status"]),
+            "driver": {"driver_id": best["driver_id"], "name": best["name"],
+                       "vehicle": best["vehicle"], "source": source},
+            "progress": append_progress(order, f"Driver assigned: {best['name']}"),
         })
+        memory = customer_memory.setdefault(cust_id, {})
+        memory["preferred_driver"] = best["driver_id"]
+        memory["favorite_restaurant"] = order["restaurant"]
+        memory["usual_address"] = order["address"]
         return json.dumps({
             "order_id": order_id,
-            "driver": driver["name"],
-            "vehicle": driver["vehicle"],
-        })
+            "driver": best["name"],
+            "driver_id": best["driver_id"],
+            "source": source,
+        }, indent=2)
 
     return Agent(model=model, system_prompt=system_prompt, tools=[assign_driver_tool])
 
 
 def build_price_calculator_agent() -> Agent:
-    """Calculate the order price; writes price breakdown via update_order."""
+    """Calculate total with tax + delivery fee; writes total_price via update_order."""
     model = BedrockModel(model_id=NOVA_LITE_MODEL, region_name=AWS_REGION, temperature=0.0)
     system_prompt = (
         "You are a price-calculation agent for a food delivery platform. "
@@ -372,22 +384,24 @@ def build_price_calculator_agent() -> Agent:
     @tool
     def calculate_price_tool(order_id: str) -> str:
         order = get_order(order_id)
-        pricing = compute_price(
-            from_dynamo(order["items"]),
-            float(order["distance_mi"]),
-        )
+        pricing = compute_price(from_dynamo(order["items"]))
         update_order(order_id, {
-            "price": pricing["total"],
+            "total_price": pricing["total_price"],
             "price_breakdown": pricing,
             "currency": "USD",
+            "progress": append_progress(
+                order,
+                f"Price calculated: subtotal ${pricing['subtotal']:.2f} "
+                f"+ 8% tax + ${DELIVERY_FEE:.2f} delivery",
+            ),
         })
-        return json.dumps({"order_id": order_id, **pricing})
+        return json.dumps({"order_id": order_id, **pricing}, indent=2)
 
     return Agent(model=model, system_prompt=system_prompt, tools=[calculate_price_tool])
 
 
 def build_status_tracker_agent() -> Agent:
-    """Advance order status to delivered; writes final status via update_order."""
+    """Advance order status and append progress via update_order."""
     model = BedrockModel(model_id=NOVA_LITE_MODEL, region_name=AWS_REGION, temperature=0.0)
     system_prompt = (
         "You are a status-tracking agent for a food delivery platform. "
@@ -398,12 +412,15 @@ def build_status_tracker_agent() -> Agent:
     @tool
     def track_status_tool(order_id: str) -> str:
         order = get_order(order_id)
-        status = "delivered"
+        if order.get("status") in ("rejected", "cancelled"):
+            status = order["status"]
+        else:
+            status = "out_for_delivery"
         update_order(order_id, {
             "status": status,
-            "delivered_at": datetime.now(timezone.utc).isoformat(),
+            "progress": append_progress(order, f"Status: {status}"),
         })
-        return json.dumps({"order_id": order_id, "status": status})
+        return json.dumps({"order_id": order_id, "status": status}, indent=2)
 
     return Agent(model=model, system_prompt=system_prompt, tools=[track_status_tool])
 
@@ -413,19 +430,20 @@ def build_status_tracker_agent() -> Agent:
 # ============================================================================
 
 def run_scenario_sequential(order_id: str = "ORD-001") -> dict:
-    """Scenario 1: agents run one at a time. No conflicts expected."""
+    """Scenario 1: four agents one at a time. No conflicts expected."""
     print("\n" + "=" * 70)
     print("Scenario 1 - Sequential (one agent at a time)")
     print("=" * 70)
 
     create_order(
-        order_id, customer="Alice",
-        restaurant="Pasta Palace",
-        items=[{"name": "Spaghetti", "price": 12.50, "qty": 2},
-               {"name": "Tiramisu", "price": 7.00, "qty": 1}],
-        distance_mi=6.0,
+        order_id, customer_id="alice",
+        restaurant="Tokyo Ramen House",
+        items=[{"name": "Ramen", "price": 13.50, "qty": 2},
+               {"name": "Gyoza", "price": 6.00, "qty": 1}],
+        address="123 Main St",
+        distance_mi=4.0,
     )
-    print(f"Created {order_id} at version 0 (Alice, Pasta Palace, ttl+2h)")
+    print(f"Created {order_id} v0 (Alice, Tokyo Ramen House, ttl+2h)")
 
     builders = [
         ("RestaurantConfirmAgent", build_restaurant_confirm_agent),
@@ -454,13 +472,14 @@ def run_scenario_concurrent(order_id: str = "ORD-002") -> dict:
     print("=" * 70)
 
     create_order(
-        order_id, customer="Bob",
-        restaurant="Sushi World",
-        items=[{"name": "Dragon Roll", "price": 14.00, "qty": 1},
-               {"name": "Miso Soup", "price": 4.50, "qty": 2}],
-        distance_mi=4.0,
+        order_id, customer_id="bob",
+        restaurant="Bella Italia",
+        items=[{"name": "Margherita Pizza", "price": 15.00, "qty": 1},
+               {"name": "Tiramisu", "price": 7.50, "qty": 1}],
+        address="456 Oak Ave",
+        distance_mi=6.0,
     )
-    print(f"Created {order_id} at version 0 (Bob, Sushi World, ttl+2h)")
+    print(f"Created {order_id} v0 (Bob, Bella Italia, ttl+2h)")
 
     builders = [
         build_restaurant_confirm_agent,
@@ -491,41 +510,51 @@ def run_scenario_concurrent(order_id: str = "ORD-002") -> dict:
 
 
 def run_scenario_recovery(order_id: str = "ORD-003") -> dict:
-    """Scenario 3: order is rejected mid-flight — recover_order cleans partial data."""
+    """Scenario 3: driver + price first, restaurant rejects, recover_order cleans up."""
     print("\n" + "=" * 70)
-    print("Scenario 3 - Recovery (rejected order cleaned up via recover_order)")
+    print("Scenario 3 - State recovery (restaurant rejects after partial writes)")
     print("=" * 70)
 
     create_order(
-        order_id, customer="Carol",
-        restaurant="Burger Barn",
-        items=[{"name": "Cheeseburger", "price": 10.00, "qty": 1}],
+        order_id, customer_id="carlos",
+        restaurant="Green Garden",
+        items=[{"name": "Buddha Bowl", "price": 12.00, "qty": 1},
+               {"name": "Smoothie", "price": 5.50, "qty": 2}],
+        address="789 Pine Rd",
         distance_mi=3.0,
+        simulate_rejection=True,
     )
-    print(f"Created {order_id} at version 0 (Carol, Burger Barn, ttl+2h)")
+    print(f"Created {order_id} v0 (Carlos, Green Garden, simulate_rejection=True)")
 
-    # Simulate partial agent writes before rejection
-    run_agent_with_retry(build_restaurant_confirm_agent, f"Process order {order_id}")
+    # Driver and price write first — order looks partially complete
     run_agent_with_retry(build_driver_assign_agent, f"Process order {order_id}")
     run_agent_with_retry(build_price_calculator_agent, f"Process order {order_id}")
     partial = get_order(order_id)
-    print(f"  Partial state before recovery: status={partial['status']}  "
-          f"driver={partial.get('driver')}  price={partial.get('price')}  "
-          f"version={partial['version']}")
+    print(f"  Partial state: status={partial['status']}  "
+          f"driver={partial.get('driver', {}).get('name') if isinstance(partial.get('driver'), dict) else partial.get('driver')}  "
+          f"total_price={partial.get('total_price')}  version={partial['version']}")
 
-    # Restaurant rejects — clean up partial data
+    # Restaurant rejects — clean up orphan driver + price
+    run_agent_with_retry(build_restaurant_confirm_agent, f"Process order {order_id}")
+    rejected = get_order(order_id)
+    print(f"  Restaurant rejected: status={rejected['status']}  "
+          f"reason={rejected.get('reject_reason')}")
+
     final = recover_order(order_id)
     print(f"  recover_order -> status={final['status']}  "
-          f"driver={final.get('driver')}  price={final.get('price')}  "
+          f"driver={final.get('driver')}  total_price={final.get('total_price')}  "
           f"version={final['version']}")
+    print(f"  progress: {final.get('progress')}")
     _print_final_state(final)
     return final
 
 
 def _print_final_state(order: dict) -> None:
+    driver = order.get("driver")
+    driver_name = driver.get("name") if isinstance(driver, dict) else driver
     print(f"Final state: status={order.get('status')}  "
-          f"driver={order.get('driver')} ({order.get('vehicle')})  "
-          f"price=${order.get('price')}  "
+          f"driver={driver_name}  "
+          f"total_price={order.get('total_price')}  "
           f"version={order.get('version')}  "
           f"ttl={order.get('ttl')}")
 
@@ -541,6 +570,7 @@ def main() -> None:
     print("=" * 70)
 
     reset_metrics()
+    customer_memory.clear()
 
     order1 = run_scenario_sequential("ORD-001")
     order2 = run_scenario_concurrent("ORD-002")
@@ -568,20 +598,36 @@ def main() -> None:
     for entry in writes:
         print(f"  {entry['order_id']:10s} {entry['version']:>8d}  {', '.join(entry['fields'])}")
 
+    # --- Customer memory ---
+    print("\n" + "=" * 70)
+    print("Customer Memory (AgentCore SESSION_SUMMARY stand-in)")
+    print("=" * 70)
+    for cust_id, mem in sorted(customer_memory.items()):
+        print(f"  {cust_id}: preferred_driver={mem.get('preferred_driver')}  "
+              f"favorite_restaurant={mem.get('favorite_restaurant')}  "
+              f"usual_address={mem.get('usual_address')}")
+
     # --- Scenario outcomes ---
     print("\n" + "=" * 70)
     print("Scenario outcomes")
     print("=" * 70)
     print(f"  ORD-001 sequential: status={order1.get('status')} "
-          f"driver={order1.get('driver')} price=${order1.get('price')} "
+          f"driver={_driver_name(order1)} total_price={order1.get('total_price')} "
           f"version={order1.get('version')}")
     print(f"  ORD-002 concurrent: status={order2.get('status')} "
-          f"driver={order2.get('driver')} price=${order2.get('price')} "
+          f"driver={_driver_name(order2)} total_price={order2.get('total_price')} "
           f"version={order2.get('version')} "
           f"(conflicts resolved via optimistic locking)")
     print(f"  ORD-003 recovered:  status={order3.get('status')} "
-          f"driver={order3.get('driver')} price={order3.get('price')} "
+          f"driver={order3.get('driver')} total_price={order3.get('total_price')} "
           f"version={order3.get('version')}")
+
+
+def _driver_name(order: dict) -> str | None:
+    driver = order.get("driver")
+    if isinstance(driver, dict):
+        return driver.get("name")
+    return driver
 
 
 if __name__ == "__main__":

@@ -30,39 +30,41 @@ def _conditional_failed():
 # --- Conversion helpers ---
 
 def test_to_dynamo_converts_float_to_decimal():
-    result = fds.to_dynamo({"price": 9.99, "nested": {"total": 12.5}, "tags": [1.5]})
-    assert isinstance(result["price"], Decimal)
-    assert isinstance(result["nested"]["total"], Decimal)
+    result = fds.to_dynamo({"total_price": 9.99, "nested": {"tax": 1.5}, "tags": [1.5]})
+    assert isinstance(result["total_price"], Decimal)
+    assert isinstance(result["nested"]["tax"], Decimal)
     assert isinstance(result["tags"][0], Decimal)
 
 
 def test_from_dynamo_converts_decimal_types():
-    result = fds.from_dynamo({"price": Decimal("9.99"), "version": Decimal("3")})
-    assert result["price"] == 9.99
-    assert isinstance(result["price"], float)
+    result = fds.from_dynamo({"total_price": Decimal("9.99"), "version": Decimal("3")})
+    assert result["total_price"] == 9.99
+    assert isinstance(result["total_price"], float)
     assert result["version"] == 3
     assert isinstance(result["version"], int)
 
 
 # --- create_order ---
 
-def test_create_order_seeds_version_zero_and_ttl():
+def test_create_order_seeds_version_zero_ttl_and_pending_fields():
     mock_table = MagicMock()
     with patch.object(fds, "order_table", mock_table), \
          patch.object(fds, "_record_write"):
         result = fds.create_order(
-            "ORD-001", "Alice", "Pasta Palace",
-            [{"name": "Spaghetti", "price": 12.50, "qty": 2}],
-            distance_mi=6.0,
+            "ORD-001", "alice", "Tokyo Ramen House",
+            [{"name": "Ramen", "price": 13.50, "qty": 2}],
+            address="123 Main St",
+            distance_mi=4.0,
         )
     mock_table.put_item.assert_called_once()
     item = mock_table.put_item.call_args[1]["Item"]
     assert item["version"] == 0
-    assert item["status"] == "placed"
+    assert item["status"] == "pending"
     assert item["driver"] is None
-    assert item["price"] is None
+    assert item["total_price"] is None
+    assert item["progress"] == []
+    assert item["simulate_rejection"] is False
     assert item["ttl"] > 0
-    # 2-hour TTL: ttl - created epoch ~= 7200
     import time
     assert abs(item["ttl"] - (int(time.time()) + 7200)) < 5
     assert result["version"] == 0
@@ -73,17 +75,17 @@ def test_create_order_seeds_version_zero_and_ttl():
 def test_update_order_increments_version():
     mock_table = MagicMock()
     mock_table.get_item.return_value = {
-        "Item": {"order_id": "O1", "version": 0, "status": "placed"}
+        "Item": {"order_id": "O1", "version": 0, "status": "pending"}
     }
     with patch.object(fds, "order_table", mock_table), \
          patch.object(fds, "_record_write"), \
          patch.object(fds, "_record_conflict"):
-        result = fds.update_order("O1", {"price": 25.5})
+        result = fds.update_order("O1", {"total_price": 25.5})
     assert result["version"] == 1
-    assert result["price"] == 25.5
+    assert result["total_price"] == 25.5
     put_kwargs = mock_table.put_item.call_args[1]
-    assert put_kwargs["ConditionExpression"] == "version = :v"
-    assert put_kwargs["ExpressionAttributeValues"][":v"] == 0
+    assert put_kwargs["ConditionExpression"] == "version = :expected_ver"
+    assert put_kwargs["ExpressionAttributeValues"][":expected_ver"] == 0
 
 
 def test_update_order_retries_on_version_conflict_then_succeeds():
@@ -98,7 +100,7 @@ def test_update_order_retries_on_version_conflict_then_succeeds():
          patch.object(fds, "_record_write") as mock_write, \
          patch.object(fds, "_record_conflict") as mock_conflict, \
          patch.object(fds.time, "sleep") as mock_sleep:
-        result = fds.update_order("O1", {"driver": "Marcus"})
+        result = fds.update_order("O1", {"driver": {"driver_id": "DRV-01", "name": "Marcus"}})
 
     assert result["version"] == 2
     assert mock_table.put_item.call_count == 2
@@ -116,7 +118,7 @@ def test_update_order_raises_after_max_retries():
          patch.object(fds, "_record_conflict"), \
          patch.object(fds.time, "sleep"):
         with pytest.raises(fds.VersionConflictError):
-            fds.update_order("O1", {"price": 1.0}, max_retries=3)
+            fds.update_order("O1", {"total_price": 1.0}, max_retries=3)
 
     assert mock_table.put_item.call_count == 3
 
@@ -132,7 +134,7 @@ def test_update_order_raises_other_client_errors_immediately():
          patch.object(fds, "_record_write"), \
          patch.object(fds, "_record_conflict"):
         with pytest.raises(ClientError):
-            fds.update_order("O1", {"price": 1.0})
+            fds.update_order("O1", {"total_price": 1.0})
     assert mock_table.put_item.call_count == 1
 
 
@@ -162,29 +164,27 @@ def test_update_order_uses_exponential_backoff_delays():
 def test_get_order_returns_item():
     mock_table = MagicMock()
     mock_table.get_item.return_value = {
-        "Item": {"order_id": "O1", "version": 2, "price": Decimal("25.5")}
+        "Item": {"order_id": "O1", "version": 2, "total_price": Decimal("25.5")}
     }
     with patch.object(fds, "order_table", mock_table):
         result = fds.get_order("O1")
     assert result["order_id"] == "O1"
-    assert result["price"] == 25.5
+    assert result["total_price"] == 25.5
     mock_table.get_item.assert_called_once_with(Key={"order_id": "O1"})
 
 
 # --- recover_order ---
 
-def test_recover_order_resets_driver_and_price_to_none():
+def test_recover_order_resets_driver_and_total_price_via_update_order():
     mock_table = MagicMock()
     mock_table.get_item.return_value = {
         "Item": {
             "order_id": "O1",
             "version": 4,
-            "customer": "Carol",
-            "restaurant": "Burger Barn",
-            "status": "driver_assigned",
-            "driver": "Marcus",
-            "vehicle": "Toyota Camry",
-            "price": Decimal("18.5"),
+            "customer_id": "carlos",
+            "status": "confirmed",
+            "driver": {"driver_id": "DRV-01", "name": "Marcus"},
+            "total_price": Decimal("22.66"),
         }
     }
     with patch.object(fds, "order_table", mock_table), \
@@ -192,28 +192,23 @@ def test_recover_order_resets_driver_and_price_to_none():
         result = fds.recover_order("O1")
     assert result["status"] == "cancelled"
     assert result["driver"] is None
-    assert result["price"] is None
+    assert result["total_price"] is None
     assert result["version"] == 5
-    assert result["customer"] == "Carol"
-    assert "cancelled_at" in result
-
-
-def test_recover_already_cancelled_order_is_noop():
-    mock_table = MagicMock()
-    mock_table.get_item.return_value = {
-        "Item": {"order_id": "O1", "version": 5, "status": "cancelled", "customer": "Carol"}
-    }
-    with patch.object(fds, "order_table", mock_table):
-        result = fds.recover_order("O1")
-    assert result["status"] == "cancelled"
-    mock_table.put_item.assert_not_called()
+    assert result["progress"] == [
+        "Order rejected by restaurant",
+        "Partial updates cleaned up",
+    ]
+    put_kwargs = mock_table.put_item.call_args[1]
+    assert put_kwargs["ConditionExpression"] == "version = :expected_ver"
 
 
 def test_recover_order_retries_on_conflict():
     mock_table = MagicMock()
     mock_table.get_item.side_effect = [
-        {"Item": {"order_id": "O1", "version": 4, "status": "placed", "driver": "Marcus", "price": Decimal("10")}},
-        {"Item": {"order_id": "O1", "version": 5, "status": "placed", "driver": "Marcus", "price": Decimal("10")}},
+        {"Item": {"order_id": "O1", "version": 4, "status": "confirmed",
+                  "driver": {"name": "Marcus"}, "total_price": Decimal("10")}},
+        {"Item": {"order_id": "O1", "version": 5, "status": "confirmed",
+                  "driver": {"name": "Marcus"}, "total_price": Decimal("10")}},
     ]
     mock_table.put_item.side_effect = [_conditional_failed(), {}]
     with patch.object(fds, "order_table", mock_table), \
@@ -228,48 +223,73 @@ def test_recover_order_retries_on_conflict():
 
 # --- Pure helpers ---
 
-def test_confirm_restaurant_always_accepts():
-    order = {"restaurant": "Pasta Palace", "distance_mi": 6.0}
+def test_confirm_restaurant_accepts_normal_order():
+    order = {"restaurant": "Tokyo Ramen House", "simulate_rejection": False}
     result = fds.confirm_restaurant(order)
     assert result["confirmed"] is True
-    assert result["restaurant"] == "Pasta Palace"
-    # 25 + round(6 * 1.5) = 25 + 9 = 34
-    assert result["eta_minutes"] == 34
+    assert result["status"] == "confirmed"
 
 
-def test_select_driver_picks_highest_rated():
-    driver = fds.select_driver("ORD-001")
+def test_confirm_restaurant_rejects_when_flag_set():
+    order = {"restaurant": "Green Garden", "simulate_rejection": True}
+    result = fds.confirm_restaurant(order)
+    assert result["confirmed"] is False
+    assert result["status"] == "rejected"
+    assert result["reason"]
+
+
+def test_select_driver_highest_rated_when_no_memory():
+    fds.customer_memory.clear()
+    driver = fds.select_driver("alice")
+    assert driver["driver_id"] == "DRV-01"
     assert driver["name"] == "Marcus"
     assert driver["rating"] == 4.9
+    assert driver["source"] == "highest_rated"
+    assert fds.customer_memory["alice"]["preferred_driver"] == "DRV-01"
 
 
-def test_compute_price_standard_order():
+def test_select_driver_prefers_memory():
+    fds.customer_memory.clear()
+    fds.customer_memory["bob"] = {"preferred_driver": "DRV-03"}
+    driver = fds.select_driver("bob")
+    assert driver["driver_id"] == "DRV-03"
+    assert driver["source"] == "memory"
+
+
+def test_select_driver_falls_back_when_preferred_unavailable():
+    fds.customer_memory.clear()
+    fds.customer_memory["alice"] = {"preferred_driver": "DRV-99"}
+    driver = fds.select_driver("alice")
+    assert driver["driver_id"] == "DRV-01"
+    assert driver["source"] == "highest_rated"
+
+
+def test_compute_price_with_tax_and_delivery_fee():
     items = [
-        {"name": "Spaghetti", "price": 12.50, "qty": 2},  # 25.00
-        {"name": "Tiramisu", "price": 7.00, "qty": 1},     # 7.00
+        {"name": "Ramen", "price": 13.50, "qty": 2},  # 27.00
+        {"name": "Gyoza", "price": 6.00, "qty": 1},    # 6.00
     ]
-    # subtotal=32.00, delivery=2.99, service=3.20, tax=2.56, total=40.75
-    result = fds.compute_price(items, 6.0)
-    assert result["subtotal"] == 32.00
-    assert result["delivery_fee"] == 2.99
-    assert result["service_fee"] == 3.20
-    assert result["tax"] == 2.56
-    assert result["total"] == 40.75
+    # subtotal=33.00, tax=2.64, delivery=4.99, total=40.63
+    result = fds.compute_price(items)
+    assert result["subtotal"] == 33.00
+    assert result["tax"] == 2.64
+    assert result["delivery_fee"] == 4.99
+    assert result["total_price"] == 40.63
 
 
-def test_next_status_pipeline():
-    assert fds.next_status("placed") == "confirmed"
-    assert fds.next_status("confirmed") == "driver_assigned"
-    assert fds.next_status("driver_assigned") == "out_for_delivery"
-    assert fds.next_status("out_for_delivery") == "delivered"
-    assert fds.next_status("delivered") == "delivered"
+def test_append_progress_appends_entry():
+    assert fds.append_progress({"progress": ["a"]}, "b") == ["a", "b"]
+    assert fds.append_progress({}, "x") == ["x"]
 
 
 # --- Concurrent writes through ThreadPoolExecutor ---
 
 def test_concurrent_updates_do_not_lose_fields():
     """Four writers race on the same record; no field may be lost."""
-    store = {"order_id": "O1", "version": 0, "status": "placed", "driver": None, "price": None}
+    store = {
+        "order_id": "O1", "version": 0, "status": "pending",
+        "driver": None, "total_price": None, "progress": [],
+    }
     lock = threading.Lock()
 
     class FakeTable:
@@ -280,7 +300,7 @@ def test_concurrent_updates_do_not_lose_fields():
 
         def put_item(self, Item, ConditionExpression=None, ExpressionAttributeValues=None):
             with lock:
-                if ExpressionAttributeValues and store["version"] != ExpressionAttributeValues[":v"]:
+                if ExpressionAttributeValues and store["version"] != ExpressionAttributeValues[":expected_ver"]:
                     raise _conditional_failed()
                 store.clear()
                 store.update(Item)
@@ -293,20 +313,25 @@ def test_concurrent_updates_do_not_lose_fields():
             return fds.update_order("O1", updates, max_retries=20)
 
         slices = [
-            {"restaurant_confirmed": True, "status": "confirmed"},
-            {"driver": "Marcus", "vehicle": "Toyota Camry", "status": "driver_assigned"},
-            {"price": 40.75, "currency": "USD"},
-            {"status": "delivered"},
+            {"status": "confirmed", "restaurant_confirmed": True,
+             "progress": ["Restaurant: confirmed"]},
+            {"driver": {"driver_id": "DRV-01", "name": "Marcus"},
+             "progress": ["Driver assigned: Marcus"]},
+            {"total_price": 40.63, "currency": "USD",
+             "progress": ["Price calculated"]},
+            {"status": "out_for_delivery",
+             "progress": ["Status: out_for_delivery"]},
         ]
         with ThreadPoolExecutor(max_workers=4) as pool:
             futures = [pool.submit(write_slice, s) for s in slices]
             for f in futures:
                 f.result()
 
+    # Last successful write of each key wins — none may be missing
     assert store["restaurant_confirmed"] is True
-    assert store["driver"] == "Marcus"
-    assert store["price"] == 40.75
-    assert store["status"] == "delivered"
+    assert store["driver"]["name"] == "Marcus"
+    assert float(store["total_price"]) == 40.63
+    assert store["currency"] == "USD"
     assert store["version"] == 4
 
 
@@ -335,21 +360,24 @@ def test_live_optimistic_locking_roundtrip():
     try:
         table.put_item(Item={
             "order_id": order_id, "version": 0,
-            "customer": "TestCustomer", "restaurant": "TestResto",
+            "customer_id": "test", "restaurant": "TestResto",
             "items": [{"name": "Burger", "price": Decimal("10.0"), "qty": 1}],
-            "distance_mi": Decimal("5.0"),
-            "status": "placed", "driver": None, "price": None,
+            "address": "1 Test St", "distance_mi": Decimal("5.0"),
+            "status": "pending", "driver": None, "total_price": None,
+            "progress": [], "simulate_rejection": False,
         })
-        r1 = fds.update_order(order_id, {"driver": "Marcus", "vehicle": "Toyota Camry"})
+        r1 = fds.update_order(order_id, {
+            "driver": {"driver_id": "DRV-01", "name": "Marcus"},
+        })
         assert r1["version"] == 1
-        r2 = fds.update_order(order_id, {"price": 18.5, "currency": "USD"})
+        r2 = fds.update_order(order_id, {"total_price": 17.79, "currency": "USD"})
         assert r2["version"] == 2
-        assert r2["driver"] == "Marcus"
-        assert r2["price"] == 18.5
+        assert r2["driver"]["name"] == "Marcus"
+        assert r2["total_price"] == 17.79
 
         item = table.get_item(Key={"order_id": order_id})["Item"]
         assert int(item["version"]) == 2
-        assert item["driver"] == "Marcus"
+        assert item["driver"]["name"] == "Marcus"
     finally:
         table.delete_item(Key={"order_id": order_id})
 
@@ -363,17 +391,25 @@ def test_live_recover_order_cancels():
     try:
         table.put_item(Item={
             "order_id": order_id, "version": 0,
-            "customer": "TestCustomer", "restaurant": "TestResto",
+            "customer_id": "test", "restaurant": "TestResto",
             "items": [{"name": "Burger", "price": Decimal("10.0"), "qty": 1}],
-            "distance_mi": Decimal("5.0"),
-            "status": "placed", "driver": None, "price": None,
+            "address": "1 Test St", "distance_mi": Decimal("5.0"),
+            "status": "pending", "driver": None, "total_price": None,
+            "progress": [], "simulate_rejection": True,
         })
-        fds.update_order(order_id, {"driver": "Sofia", "status": "driver_assigned"})
-        fds.update_order(order_id, {"price": 22.0})
+        fds.update_order(order_id, {
+            "driver": {"driver_id": "DRV-02", "name": "Sofia"},
+            "status": "confirmed",
+        })
+        fds.update_order(order_id, {"total_price": 17.79})
 
         final = fds.recover_order(order_id)
         assert final["status"] == "cancelled"
         assert final["driver"] is None
-        assert final["price"] is None
+        assert final["total_price"] is None
+        assert final["progress"] == [
+            "Order rejected by restaurant",
+            "Partial updates cleaned up",
+        ]
     finally:
         table.delete_item(Key={"order_id": order_id})
