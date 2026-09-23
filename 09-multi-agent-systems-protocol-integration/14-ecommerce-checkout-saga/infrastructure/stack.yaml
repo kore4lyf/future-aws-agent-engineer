@@ -1,0 +1,21 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: DynamoDB checkout-saga table for e-commerce checkout saga exercise (step state machine, lock, barrier)
+
+Resources:
+  CheckoutSagaTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: checkout-saga
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: checkout_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: checkout_id
+          KeyType: HASH
+
+Outputs:
+  CheckoutTableName:
+    Value: !Ref CheckoutSagaTable
+  CheckoutTableArn:
+    Value: !GetAtt CheckoutSagaTable.Arn
