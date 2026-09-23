@@ -2,18 +2,21 @@
 # Clinical Literature — Multi-Agent RAG Exercise (Lesson 8)
 # =============================================================================
 # Two clinical retrievers (Drug Interactions, Clinical Guidelines) query
-# separate Bedrock KBs in parallel. Aggregation merges, deduplicates
-# (doc_id + near-identical content), and ranks passages. Synthesis emits a
-# strict three-section clinical summary and flags partial/degraded results.
+# separate Bedrock KBs in parallel. A failing KB returns an empty list +
+# structured error inside the tool (graceful degradation). Aggregation is
+# merge -> deduplicate -> rank -> top-K. Synthesis emits a strict three-section
+# clinical summary; when one KB was unavailable, a PARTIAL RESULTS disclaimer
+# is injected into the synthesis prompt.
 #
 # Data flow:
 #   Doctor question
-#     -> ThreadPoolExecutor(2) parallel retrieval
-#     -> aggregate + dedup + top-K rank
-#     -> synthesis (Drug Interactions | Guidelines | Integrated Recommendation)
+#     -> ThreadPoolExecutor(2) parallel retrieval (tools catch ConnectionError)
+#     -> merge + deduplicate_passages + rank + top-K
+#     -> synthesis (DRUG INTERACTIONS | CLINICAL GUIDELINES | INTEGRATED RECOMMENDATION)
 # ============================================================================
 
 import hashlib
+import json
 import os
 import re
 import time
@@ -34,12 +37,13 @@ NOVA_PRO_MODEL = os.environ.get("NOVA_PRO_MODEL", "amazon.nova-pro-v1:0")
 DRUG_INTERACTIONS_KB_ID = os.environ.get("DRUG_INTERACTIONS_KB_ID", "").strip()
 CLINICAL_GUIDELINES_KB_ID = os.environ.get("CLINICAL_GUIDELINES_KB_ID", "").strip()
 
-# simulate_failure: "" | "drugs" | "guidelines" — forces one KB to fail
+# Optional override: "drugs" | "guidelines" — forces that KB offline for the demo.
 SIMULATE_FAILURE = os.environ.get("SIMULATE_FAILURE", "").strip().lower()
 
-TOP_K = 8
+# Clinical decisions need more supporting evidence than the demo's TOP_K=5.
+TOP_K = 10
 
-retrieval_results: dict[str, list[dict]] = {"drugs": [], "guidelines": []}
+retrieval_results: dict[str, list[dict]] = {"drug": [], "guidelines": []}
 
 
 class ConfigError(RuntimeError):
@@ -73,8 +77,11 @@ def _doc_id_from(uri: str, kb_name: str) -> str:
     return f"{kb_name}-{number}"
 
 
-def retrieve_from_kb(kb_id: str, query: str, kb_name: str, top_k: int = TOP_K) -> list[dict]:
-    """Call bedrock-agent-runtime.retrieve() and return uniform passage dicts."""
+def retrieve_from_kb(kb_id: str, query: str, kb_name: str,
+                     top_k: int = TOP_K, simulate_failure: bool = False) -> list[dict]:
+    """Call bedrock-agent-runtime.retrieve(); optionally simulate a KB outage."""
+    if simulate_failure:
+        raise ConnectionError(f"Simulated {kb_name} KB outage")
     client = boto3.client("bedrock-agent-runtime", region_name=AWS_REGION)
     response = client.retrieve(
         knowledgeBaseId=kb_id,
@@ -116,6 +123,7 @@ def run_agent_with_retry(builder, prompt: str, max_retries: int = 3) -> str:
 
 # ============================================================================
 # TODO 1: Retriever agents — one specialized agent per clinical KB
+#          Graceful failure lives INSIDE each tool (try/except ConnectionError)
 # ============================================================================
 
 def _build_retriever(tool_fn, system_prompt: str) -> Agent:
@@ -123,17 +131,38 @@ def _build_retriever(tool_fn, system_prompt: str) -> Agent:
     return Agent(model=model, system_prompt=system_prompt, tools=[tool_fn])
 
 
-def build_drug_interactions_retriever() -> Agent:
+def _passage_summary(passages: list[dict]) -> list[dict]:
+    return [
+        {"doc_id": p["doc_id"], "title": p["title"], "score": p["score"]}
+        for p in passages
+    ]
+
+
+def build_drug_interactions_retriever(simulate_failure: bool = False) -> Agent:
     """Agent that searches ONLY the Drug Interactions knowledge base."""
 
     @tool
-    def retrieve_drug_interactions(query: str) -> str:
+    def retrieve_drug_interactions(search_query: str) -> str:
         """Search drug-drug and drug-class interaction evidence."""
-        if SIMULATE_FAILURE == "drugs":
-            raise ConnectionError("Simulated Drug Interactions KB outage")
-        passages = retrieve_from_kb(DRUG_INTERACTIONS_KB_ID, query, "DDR")
-        retrieval_results["drugs"] = passages
-        return f"Found {len(passages)} drug-interaction passages"
+        try:
+            passages = retrieve_from_kb(
+                DRUG_INTERACTIONS_KB_ID, search_query, "DDR", TOP_K, simulate_failure
+            )
+            retrieval_results["drug"] = passages
+        except ConnectionError as error:
+            retrieval_results["drug"] = []
+            return json.dumps(
+                {"kb": "Drug Interactions", "error": str(error), "passages_found": 0},
+                indent=2,
+            )
+        return json.dumps(
+            {
+                "kb": "Drug Interactions",
+                "passages_found": len(passages),
+                "passages": _passage_summary(passages),
+            },
+            indent=2,
+        )
 
     return _build_retriever(
         retrieve_drug_interactions,
@@ -142,20 +171,31 @@ def build_drug_interactions_retriever() -> Agent:
     )
 
 
-def build_clinical_guidelines_retriever() -> Agent:
+def build_clinical_guidelines_retriever(simulate_failure: bool = False) -> Agent:
     """Agent that searches ONLY the Clinical Guidelines knowledge base."""
 
     @tool
-    def retrieve_clinical_guidelines(query: str) -> str:
+    def retrieve_clinical_guidelines(search_query: str) -> str:
         """Search clinical practice guideline passages."""
-        if SIMULATE_FAILURE == "guidelines":
-            raise ConnectionError("Simulated Clinical Guidelines KB outage")
         try:
-            passages = retrieve_from_kb(CLINICAL_GUIDELINES_KB_ID, query, "CGL")
-        except ConnectionError:
-            passages = []
-        retrieval_results["guidelines"] = passages
-        return f"Found {len(passages)} guideline passages"
+            passages = retrieve_from_kb(
+                CLINICAL_GUIDELINES_KB_ID, search_query, "CGL", TOP_K, simulate_failure
+            )
+            retrieval_results["guidelines"] = passages
+        except ConnectionError as error:
+            retrieval_results["guidelines"] = []
+            return json.dumps(
+                {"kb": "Clinical Guidelines", "error": str(error), "passages_found": 0},
+                indent=2,
+            )
+        return json.dumps(
+            {
+                "kb": "Clinical Guidelines",
+                "passages_found": len(passages),
+                "passages": _passage_summary(passages),
+            },
+            indent=2,
+        )
 
     return _build_retriever(
         retrieve_clinical_guidelines,
@@ -165,103 +205,85 @@ def build_clinical_guidelines_retriever() -> Agent:
 
 
 # ============================================================================
-# TODO 2: Aggregate + deduplicate + rank
+# TODO 2: Merge, deduplicate, then rank (order matters)
 # ============================================================================
 
 def _content_fingerprint(passage: dict) -> str:
-    """Stable hash of normalized content for near-duplicate detection."""
-    text = re.sub(r"\s+", " ", (passage.get("content") or "").strip().lower())
+    """Hash of the first 100 chars of normalized content (near-dupe key)."""
+    text = re.sub(r"\s+", " ", (passage.get("content") or "").strip().lower())[:100]
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def aggregate_results(drug_passages: list[dict], guideline_passages: list[dict],
-                      top_k: int = TOP_K) -> list[dict]:
-    """Merge both KBs, drop redundant entries, rank by score, keep top-K.
+def deduplicate_passages(passages: list[dict]) -> list[dict]:
+    """Drop redundant passages before ranking.
 
-    Redundancy rules:
-      1. Same doc_id  -> keep highest score
-      2. Near-identical content (same fingerprint) -> keep highest score
+    1. Same doc_id -> keep highest score
+    2. Same first-100-char content hash -> keep highest score
+       (Production: swap for embedding cosine similarity.)
     """
-    # MERGE
-    all_passages = list(drug_passages) + list(guideline_passages)
-
-    # DEDUP by doc_id (keep max score)
     best_by_id: dict[str, dict] = {}
-    for passage in all_passages:
+    for passage in passages:
         existing = best_by_id.get(passage["doc_id"])
         if existing is None or passage["score"] > existing["score"]:
             best_by_id[passage["doc_id"]] = passage
 
-    # DEDUP near-identical content across different doc_ids
-    best_by_content: dict[str, dict] = {}
+    best_by_hash: dict[str, dict] = {}
     for passage in best_by_id.values():
         key = _content_fingerprint(passage)
-        existing = best_by_content.get(key)
+        existing = best_by_hash.get(key)
         if existing is None or passage["score"] > existing["score"]:
-            best_by_content[key] = passage
+            best_by_hash[key] = passage
+    return list(best_by_hash.values())
 
-    # RANK
-    ranked = sorted(best_by_content.values(), key=lambda x: x["score"], reverse=True)
-    return ranked[:top_k]
+
+def aggregate_results(drug_passages: list[dict], guideline_passages: list[dict],
+                      top_k: int = TOP_K) -> list[dict]:
+    """1. MERGE both KBs  2. DEDUP  3. RANK by score  4. trim to top_k."""
+    all_passages = list(drug_passages) + list(guideline_passages)
+    all_passages = deduplicate_passages(all_passages)
+    all_passages.sort(key=lambda x: x["score"], reverse=True)
+    return all_passages[:top_k]
 
 
 def format_passages(passages: list[dict]) -> str:
     blocks = []
     for p in passages:
         blocks.append(
-            f"[{p['doc_id']}] {p['title']} (kb={p['kb']}, score={p['score']:.3f})\n"
-            f"{p['content']}"
+            f"[{p['doc_id']}] {p['title']} (Score: {p['score']:.3f}, KB: {p['kb']})\n"
+            f"Content: {p['content']}"
         )
     return "\n\n".join(blocks) if blocks else "(no passages)"
 
 
 # ============================================================================
-# TODO 3: Synthesis agent — strict three-section clinical structure
+# TODO 3: Synthesis agent — three sections + optional PARTIAL RESULTS notice
 # ============================================================================
 
-SYNTHESIS_STRUCTURE = """You are a clinical literature synthesis agent.
-Answer ONLY from the passages (and the degradation note, if present).
-
-Output EXACTLY these three markdown sections, in order:
-
-## Drug Interactions
-Relevant interaction evidence from passages. Cite every claim as [DOC_ID].
-Write "No relevant interaction passages retrieved." if none apply.
-
-## Clinical Guidelines
-Applicable guideline recommendations from passages. Cite every claim as [DOC_ID].
-Write "No relevant guideline passages retrieved." if none apply.
-
-## Integrated Recommendation
-Combine interaction + guideline evidence into a concise clinical summary for the
-ordering clinician. Cite [DOC_ID] for factual claims. Explicitly state when
-evidence is one-sided or incomplete. Do NOT invent facts.
-
-Rules:
-1. Every factual claim MUST use [DOC_ID] citations from the passages only
-2. If passages lack relevant info, say so honestly — never hallucinate
-3. If a knowledge base was unavailable, begin with a degradation notice:
-   "DEGRADED RESULT: One or more knowledge bases were unavailable; this summary may be incomplete."
-4. This is decision support, not a substitute for clinical judgment"""
-
-
 def build_synthesis_agent(passages: list[dict], query: str,
-                          degraded: bool = False,
-                          missing_domains: list[str] | None = None) -> Agent:
-    model = BedrockModel(model_id=NOVA_PRO_MODEL, region_name=AWS_REGION, temperature=0.2)
-    degradation = ""
-    if degraded:
-        missing = ", ".join(missing_domains or ["unknown"])
-        degradation = (
-            f"\nDEGRADATION NOTICE: The following knowledge source(s) failed or were empty: "
-            f"{missing}. Flag the result as partial.\n"
-        )
-    system_prompt = (
-        f"{SYNTHESIS_STRUCTURE}\n"
-        f"{degradation}\n"
-        f"Passages:\n{format_passages(passages)}\n\n"
-        f"Clinical question: {query}"
-    )
+                          partial: bool = False) -> Agent:
+    # Clinical advice: tighter risk tolerance than the demo's temperature=0.2.
+    model = BedrockModel(model_id=NOVA_PRO_MODEL, region_name=AWS_REGION, temperature=0.1)
+
+    partial_notice = ""
+    if partial:
+        partial_notice = """
+PARTIAL RESULTS: One knowledge base was unavailable. Include a confidence
+disclaimer noting that this answer is based on incomplete data and the doctor
+should verify against the unavailable source."""
+
+    system_prompt = f"""You are a clinical literature synthesis agent.
+Answer ONLY from the retrieved passages (and the partial-results notice, if present).
+
+RULES:
+1. Every factual claim MUST cite a specific passage using [DOC_ID] format
+2. Structure your answer as: DRUG INTERACTIONS / CLINICAL GUIDELINES / INTEGRATED RECOMMENDATION
+3. Do NOT invent information not in the passages
+4. If a section has no supporting passages, write "No relevant passages retrieved."
+{partial_notice}
+RETRIEVED PASSAGES:
+{format_passages(passages)}
+CLINICAL QUESTION: {query}"""
+
     return Agent(model=model, system_prompt=system_prompt, tools=[])
 
 
@@ -269,17 +291,23 @@ def build_synthesis_agent(passages: list[dict], query: str,
 # TODO 4: Orchestrator — parallel retrieve -> aggregate -> synthesize
 # ============================================================================
 
-def run_rag_query(query: str) -> dict:
-    """Parallel clinical retrieval, dedup/rank, then structured synthesis."""
+def run_rag_query(query: str, fail_at: str | None = None) -> dict:
+    """Parallel clinical retrieval, dedup/rank, then structured synthesis.
+
+    fail_at: None (healthy) | "drug" | "guidelines" — sets partial=True and
+    forces that retriever's tool to raise ConnectionError (caught inside tool).
+    """
     require_kb_config()
-    retrieval_results["drugs"] = []
+    retrieval_results["drug"] = []
     retrieval_results["guidelines"] = []
+
+    partial = fail_at is not None
 
     print("\n" + "=" * 70)
     print(f"Clinical query: {query}")
     print("=" * 70)
-    if SIMULATE_FAILURE:
-        print(f"  simulate_failure={SIMULATE_FAILURE}")
+    if fail_at:
+        print(f"  simulate_failure={fail_at}")
 
     timings: dict[str, float] = {}
     errors: dict[str, str] = {}
@@ -289,12 +317,16 @@ def run_rag_query(query: str) -> dict:
         futures = {
             executor.submit(
                 run_agent_with_retry,
-                build_drug_interactions_retriever,
+                lambda: build_drug_interactions_retriever(
+                    simulate_failure=(fail_at == "drug")
+                ),
                 f"Search for: {query}",
-            ): "drugs",
+            ): "drug",
             executor.submit(
                 run_agent_with_retry,
-                build_clinical_guidelines_retriever,
+                lambda: build_clinical_guidelines_retriever(
+                    simulate_failure=(fail_at == "guidelines")
+                ),
                 f"Search for: {query}",
             ): "guidelines",
         }
@@ -311,61 +343,31 @@ def run_rag_query(query: str) -> dict:
             print(f"  {label:12s} finished in {timings[label]:.2f}s "
                   f"({len(retrieval_results[label])} passages)")
 
-    drug_passages = retrieval_results["drugs"]
+    drug_passages = retrieval_results["drug"]
     guideline_passages = retrieval_results["guidelines"]
     top_passages = aggregate_results(drug_passages, guideline_passages)
 
-    print(f"  aggregate: drugs={len(drug_passages)} guidelines={len(guideline_passages)} "
-          f"-> top {len(top_passages)} after dedup")
+    print(f"  aggregate: drug={len(drug_passages)} guidelines={len(guideline_passages)} "
+          f"-> top {len(top_passages)} after dedup  partial={partial}")
 
-    missing_domains = []
-    if errors.get("drugs") or not drug_passages:
-        missing_domains.append("Drug Interactions KB")
-    if errors.get("guidelines") or not guideline_passages:
-        missing_domains.append("Clinical Guidelines KB")
-
-    # Degraded if a retriever errored (partial data must be flagged).
-    degraded = bool(errors)
-    # Both empty -> still degraded for the clinician (no evidence available).
+    # Never call the LLM with nothing to ground on.
     if not top_passages:
-        degraded = True
-        if not missing_domains:
-            missing_domains = ["no matching passages in either KB"]
-
-    if not top_passages:
-        notice = (
-            "DEGRADED RESULT: One or more knowledge bases were unavailable; "
-            "this summary may be incomplete."
-            if errors else
-            "No relevant passages found for this clinical question."
-        )
-        answer = (
-            f"{notice}\n\n"
-            "## Drug Interactions\nNo relevant interaction passages retrieved.\n\n"
-            "## Clinical Guidelines\nNo relevant guideline passages retrieved.\n\n"
-            "## Integrated Recommendation\n"
-            "Insufficient evidence to synthesize a clinical recommendation. "
-            "Consider alternate search terms or direct database access."
-        )
-        print("  synthesis: empty/degraded structured response (no LLM call needed for empty set)")
+        print("  synthesis: skipped (no passages) -> 'No relevant results found.'")
         return {
             "query": query,
-            "synthesis": answer,
+            "synthesis": "No relevant results found.",
             "avg_score": 0.0,
             "drugs_count": len(drug_passages),
             "guidelines_count": len(guideline_passages),
             "top_passages": [],
             "timings": timings,
             "errors": errors,
-            "degraded": degraded,
-            "missing_domains": missing_domains,
+            "partial": partial,
         }
 
-    print("  synthesize: three-section clinical summary")
+    print(f"  synthesize: three-section clinical summary (partial={partial})")
     answer = run_agent_with_retry(
-        lambda: build_synthesis_agent(
-            top_passages, query, degraded=degraded, missing_domains=missing_domains
-        ),
+        lambda: build_synthesis_agent(top_passages, query, partial=partial),
         f"Answer the clinical question: {query}",
     )
     avg_score = sum(p["score"] for p in top_passages) / len(top_passages)
@@ -379,13 +381,12 @@ def run_rag_query(query: str) -> dict:
         "top_passages": top_passages,
         "timings": timings,
         "errors": errors,
-        "degraded": degraded,
-        "missing_domains": missing_domains,
+        "partial": partial,
     }
 
 
 # ============================================================================
-# MAIN
+# MAIN — Query 1/2 healthy, Query 3 fails the Drug Interactions KB
 # ============================================================================
 
 QUERIES = [
@@ -402,21 +403,25 @@ def main() -> None:
     print("=" * 70)
 
     results = []
-    for query in QUERIES:
-        result = run_rag_query(query)
+    for index, query in enumerate(QUERIES):
+        # Query 3 is the degradation test: drug KB offline (or .env override).
+        fail_at = None
+        if index == 2:
+            fail_at = "guidelines" if SIMULATE_FAILURE == "guidelines" else "drug"
+            if SIMULATE_FAILURE in ("drugs", "drug"):
+                fail_at = "drug"
+        result = run_rag_query(query, fail_at=fail_at)
         results.append(result)
         print("\n--- Clinical summary ---")
         print(result["synthesis"])
-        if result["degraded"]:
-            print(f"  [degradation] missing: {result['missing_domains']}")
 
     print("\n" + "=" * 70)
     print("Summary")
     print("=" * 70)
     for r in results:
         print(f"  avg_score={r['avg_score']:.3f}  "
-              f"drugs={r['drugs_count']}  guidelines={r['guidelines_count']}  "
-              f"degraded={r['degraded']}  query={r['query']!r}")
+              f"drug={r['drugs_count']}  guidelines={r['guidelines_count']}  "
+              f"partial={r['partial']}  query={r['query']!r}")
 
 
 if __name__ == "__main__":

@@ -1,15 +1,17 @@
 # Clinical Literature — Multi-Agent RAG Exercise (Lesson 8)
 
-Hospital-network assistant: parallel Drug Interactions + Clinical Guidelines KBs, dedup/rank, then a **three-section** clinical summary (Drug Interactions → Clinical Guidelines → Integrated Recommendation) with degradation notices.
+Hospital-network assistant: parallel Drug Interactions + Clinical Guidelines KBs, merge/dedup/rank, then a **three-section** clinical summary (DRUG INTERACTIONS → CLINICAL GUIDELINES → INTEGRATED RECOMMENDATION) with a PARTIAL RESULTS disclaimer when one KB is down.
 
 ## Requirements covered
 
 | Requirement | Where |
 |---|---|
+| Graceful failure inside each retriever | tool `try/except ConnectionError` → `passages_found: 0` + error JSON |
 | Two specialized retrievers | `build_drug_interactions_retriever`, `build_clinical_guidelines_retriever` |
-| Dedup + aggregate + rank | `aggregate_results` — doc_id + near-identical content fingerprint |
-| Three-section synthesis | `build_synthesis_agent` / `SYNTHESIS_STRUCTURE` |
-| Partial-result flagging | `SIMULATE_FAILURE`, `degraded`, `missing_domains` → DEGRADED RESULT notice |
+| Merge → dedup → rank → top-K | `aggregate_results` / `deduplicate_passages` (`TOP_K=10`) |
+| Three-section synthesis | `build_synthesis_agent` — Nova Pro `temperature=0.1` |
+| Partial-results disclaimer | `fail_at` → `partial=True` → `PARTIAL RESULTS` in system prompt |
+| Never LLM with empty evidence | both KBs empty → `"No relevant results found."` (no synthesis call) |
 | Parallel orchestration | `ThreadPoolExecutor(max_workers=2)` — both submitted before collect |
 
 ## Setup
@@ -32,11 +34,10 @@ uv run python seed_documents.py
 uv run python clinical_literature_rag.py
 ```
 
-Force a partial-result path:
+Query 3 always sets `fail_at="drug"` (Drug Interactions KB offline → partial result). Override in `.env`:
 
 ```bash
-# in .env
-SIMULATE_FAILURE=drugs
+SIMULATE_FAILURE=guidelines   # fail the guidelines KB instead
 ```
 
 ## Test

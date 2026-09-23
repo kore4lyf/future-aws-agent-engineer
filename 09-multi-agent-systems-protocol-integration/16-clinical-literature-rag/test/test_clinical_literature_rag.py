@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 from unittest.mock import patch
@@ -28,6 +29,14 @@ def _p(doc_id, score, kb="DDR", content=None, title=None):
     }
 
 
+def _unwrap_tool(fn):
+    for attr in ("_tool_function", "function", "func", "__wrapped__"):
+        raw = getattr(fn, attr, None)
+        if callable(raw):
+            return raw
+    return fn
+
+
 # --- Doc ID ---
 
 def test_doc_id_from_uri():
@@ -44,29 +53,28 @@ def test_aggregate_merges_both_clinical_sources():
     assert [p["doc_id"] for p in result] == ["DDR-001", "CGL-001", "DDR-002"]
 
 
-def test_aggregate_dedupes_same_doc_id_keeps_high_score():
+def test_deduplicate_same_doc_id_keeps_high_score():
     drugs = [_p("DDR-001", 0.60, content="unique-a")]
     guides = [_p("DDR-001", 0.95, kb="CGL", content="unique-b")]
-    result = clr.aggregate_results(drugs, guides)
+    result = clr.deduplicate_passages(drugs + guides)
     assert len(result) == 1
     assert result[0]["score"] == 0.95
-    assert result[0]["content"] == "unique-b"
 
 
-def test_aggregate_dedupes_near_identical_content():
+def test_deduplicate_near_identical_first_100_chars():
     body = "Metformin reduces hepatic glucose production and improves insulin sensitivity."
     a = _p("DDR-001", 0.70, content=body)
     b = _p("DDR-999", 0.90, kb="CGL", content="  Metformin reduces hepatic glucose production and improves insulin sensitivity.  ")
-    result = clr.aggregate_results([a], [b])
+    result = clr.deduplicate_passages([a, b])
     assert len(result) == 1
     assert result[0]["doc_id"] == "DDR-999"
     assert result[0]["score"] == 0.90
 
 
-def test_aggregate_does_not_drop_distinct_content():
+def test_deduplicate_does_not_drop_distinct_content():
     a = _p("DDR-001", 0.7, content="Drug A increases bleeding risk with warfarin.")
     b = _p("CGL-001", 0.8, kb="CGL", content="Check INR weekly when starting antibiotics.")
-    result = clr.aggregate_results([a], [b])
+    result = clr.deduplicate_passages([a, b])
     assert len(result) == 2
 
 
@@ -84,8 +92,26 @@ def test_aggregate_top_k_limit():
     assert len(result) == 5
 
 
+def test_aggregate_default_top_k_is_10():
+    assert clr.TOP_K == 10
+
+
 def test_aggregate_empty():
     assert clr.aggregate_results([], []) == []
+
+
+def test_dedup_runs_before_rank_and_trim():
+    # Ranking first would drop the high-score duplicate's low-score twin
+    # before dedup could merge them — order must be dedup -> sort -> slice.
+    drugs = [_p("DDR-001", 0.5, content="same prefix " + "x" * 80)]
+    guides = [
+        _p("CGL-001", 0.95, kb="CGL", content="same prefix " + "x" * 80),
+        _p("CGL-002", 0.55, kb="CGL", content="other guideline body"),
+    ]
+    result = clr.aggregate_results(drugs, guides, top_k=2)
+    ids = {p["doc_id"] for p in result}
+    assert "DDR-001" not in ids  # folded into CGL-001
+    assert "CGL-001" in ids
 
 
 # --- Config fail-fast ---
@@ -123,60 +149,85 @@ def test_synthesis_agent_has_no_tools():
     assert list(agent.tool_registry.registry) == []
 
 
-def test_synthesis_system_prompt_includes_three_sections():
+def test_synthesis_temperature_is_zero_point_one():
     with patch.object(clr, "BedrockModel") as mock_model:
+        clr.build_synthesis_agent([], "q")
+    assert mock_model.call_args.kwargs["temperature"] == 0.1
+
+
+def test_synthesis_prompt_enforces_three_sections():
+    with patch.object(clr, "BedrockModel"), patch.object(clr, "Agent") as mock_agent:
         clr.build_synthesis_agent([_p("DDR-001", 0.9)], "warfarin question")
-    # Agent constructor receives system_prompt via kwargs on BedrockModel path
-    # Validate structure constant directly
-    assert "## Drug Interactions" in clr.SYNTHESIS_STRUCTURE
-    assert "## Clinical Guidelines" in clr.SYNTHESIS_STRUCTURE
-    assert "## Integrated Recommendation" in clr.SYNTHESIS_STRUCTURE
-    assert "DEGRADED RESULT" in clr.SYNTHESIS_STRUCTURE
+    prompt = mock_agent.call_args.kwargs["system_prompt"]
+    assert "DRUG INTERACTIONS" in prompt
+    assert "CLINICAL GUIDELINES" in prompt
+    assert "INTEGRATED RECOMMENDATION" in prompt
+    assert "[DOC_ID]" in prompt
 
 
-def test_degraded_prompt_mentions_degradation_notice():
+def test_partial_notice_injected_only_when_partial():
+    with patch.object(clr, "BedrockModel"), patch.object(clr, "Agent") as mock_agent:
+        clr.build_synthesis_agent([], "q", partial=True)
+    prompt = mock_agent.call_args.kwargs["system_prompt"]
+    assert "PARTIAL RESULTS" in prompt
+    assert "incomplete data" in prompt
+    assert "verify against the unavailable source" in prompt
+
+    with patch.object(clr, "BedrockModel"), patch.object(clr, "Agent") as mock_agent:
+        clr.build_synthesis_agent([], "q", partial=False)
+    prompt = mock_agent.call_args.kwargs["system_prompt"]
+    assert "PARTIAL RESULTS" not in prompt
+
+
+# --- simulate_failure inside the retriever tool (caught -> structured error) ---
+
+def test_simulate_failure_tool_returns_structured_error_not_raise():
     with patch.object(clr, "BedrockModel"):
-        # Building with degraded=True injects DEGRADATION NOTICE into prompt
-        # Capture via Agent by patching Agent
-        with patch.object(clr, "Agent") as mock_agent:
-            clr.build_synthesis_agent([], "q", degraded=True,
-                                      missing_domains=["Drug Interactions KB"])
-        kwargs = mock_agent.call_args[1]
-        assert "DEGRADATION NOTICE" in kwargs["system_prompt"]
-        assert "Drug Interactions KB" in kwargs["system_prompt"]
+        agent = clr.build_drug_interactions_retriever(simulate_failure=True)
+    fn = agent.tool_registry.registry["retrieve_drug_interactions"]
+    raw = _unwrap_tool(fn)
+    result = raw("metformin and lisinopril")
+    payload = json.loads(result)
+    assert payload["kb"] == "Drug Interactions"
+    assert payload["passages_found"] == 0
+    assert "error" in payload
+    assert clr.retrieval_results["drug"] == []
 
 
-# --- simulate_failure on drug retriever tool ---
-
-def test_simulate_failure_raises_for_drugs():
-    with patch.object(clr, "SIMULATE_FAILURE", "drugs"), \
-         patch.object(clr, "BedrockModel"):
-        agent = clr.build_drug_interactions_retriever()
-        fn = agent.tool_registry.registry["retrieve_drug_interactions"]
-        handler = getattr(fn, "func", None) or getattr(fn, "__wrapped__", None) or fn
-        # Strands tool invocation — call underlying function if exposed
-        raw = getattr(fn, "_tool_function", None) or getattr(fn, "function", None)
-        target = raw or handler
-        if callable(target) and target is not fn:
-            with pytest.raises(ConnectionError, match="Simulated"):
-                target("query")
-        else:
-            pytest.skip("Strands tool wrapper shape differs; covered by orchestrator test")
+def test_guideline_simulate_failure_returns_structured_error():
+    with patch.object(clr, "BedrockModel"):
+        agent = clr.build_clinical_guidelines_retriever(simulate_failure=True)
+    fn = agent.tool_registry.registry["retrieve_clinical_guidelines"]
+    raw = _unwrap_tool(fn)
+    result = raw("type 2 diabetes")
+    payload = json.loads(result)
+    assert payload["passages_found"] == 0
+    assert "error" in payload
+    assert clr.retrieval_results["guidelines"] == []
 
 
-# --- Orchestrator: empty aggregation -> structured empty answer without synthesis LLM ---
+# --- Orchestrator: both empty -> skip synthesis LLM ---
 
-def test_empty_result_returns_three_section_empty_answer():
+def test_empty_result_skips_synthesis_with_no_relevant_results():
+    healthy = {"drug": [], "guidelines": []}
     with patch.object(clr, "require_kb_config"), \
          patch.object(clr, "run_agent_with_retry", return_value="unused") as mock_run, \
-         patch.object(clr, "retrieval_results", {"drugs": [], "guidelines": []}):
+         patch.object(clr, "retrieval_results", healthy):
         result = clr.run_rag_query("no matches expected")
-    assert "## Drug Interactions" in result["synthesis"]
-    assert "## Clinical Guidelines" in result["synthesis"]
-    assert "## Integrated Recommendation" in result["synthesis"]
-    assert result["degraded"] is True
-    # Only 2 retriever agents run; synthesis LLM not invoked for empty set
+    assert result["synthesis"] == "No relevant results found."
+    assert result["partial"] is False
+    # Only 2 retriever agents run; synthesis LLM not invoked
     assert mock_run.call_count == 2
+
+
+def test_fail_at_sets_partial_and_drugs_key():
+    healthy = {"drug": [], "guidelines": []}
+    with patch.object(clr, "require_kb_config"), \
+         patch.object(clr, "run_agent_with_retry", return_value="unused") as mock_run, \
+         patch.object(clr, "retrieval_results", healthy):
+        result = clr.run_rag_query("outage path", fail_at="drug")
+    assert result["partial"] is True
+    assert mock_run.call_count == 2  # still no synthesis when all empty
 
 
 # --- Live tests ---
@@ -195,5 +246,5 @@ def test_live_full_clinical_rag():
         pytest.skip("KB IDs or AWS credentials not set")
     result = clr.run_rag_query("drug interactions between metformin and lisinopril")
     assert result["synthesis"]
-    assert "## Drug Interactions" in result["synthesis"]
-    assert "## Integrated Recommendation" in result["synthesis"]
+    assert "DRUG INTERACTIONS" in result["synthesis"]
+    assert "INTEGRATED RECOMMENDATION" in result["synthesis"]
