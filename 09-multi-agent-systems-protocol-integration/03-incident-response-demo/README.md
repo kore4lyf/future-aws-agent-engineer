@@ -40,7 +40,7 @@ The orchestrator reads severity from `classification_cache` (never LLM prose) an
 ## Quick Start
 
 ```bash
-cd incident-response-demo
+cd 03-incident-response-demo
 cp .env.example .env
 
 # Use Nova Lite to avoid Claude Marketplace access issues

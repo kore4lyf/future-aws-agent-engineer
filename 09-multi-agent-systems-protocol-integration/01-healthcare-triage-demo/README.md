@@ -38,7 +38,7 @@ Three agents, one job each: `SymptomAnalyzer` (complaint → conditions/severity
 ### Quick Start
 
 ```bash
-cd healthcare-triage-demo
+cd 01-healthcare-triage-demo
 cp .env.example .env
 
 # Use Nova Lite to avoid Claude Marketplace access issues

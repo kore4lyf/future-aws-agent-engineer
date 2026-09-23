@@ -30,7 +30,7 @@ A cost-aware backend for a high-volume social platform. Three specialists with c
 
 ### Unit Tests (24 tests - all passing)
 ```bash
-cd content-moderation-pipeline
+cd 04-content-moderation-pipeline
 uv pip install pytest
 uv run python -m pytest test/test_main.py -v
 ```
@@ -63,7 +63,7 @@ Tests cover:
 ## Quick Start
 
 ```bash
-cd content-moderation-pipeline
+cd 04-content-moderation-pipeline
 cp .env.example .env
 # Load AWS credentials
 export AWS_ACCESS_KEY_ID="..."

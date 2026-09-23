@@ -80,7 +80,7 @@ A backend that keeps smart home devices healthy without humans in the loop. Thre
 ## Quick Start
 
 ```bash
-cd smart-home-device-mgmt
+cd 02-smart-home-device-mgmt
 cp .env.example .env
 
 # Use Nova Lite to avoid Claude Marketplace access issues

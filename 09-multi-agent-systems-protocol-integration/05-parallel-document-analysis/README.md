@@ -58,7 +58,7 @@ Security   Scalability    Cost
 ## Setup
 
 ```bash
-cd parallel-document-analysis
+cd 05-parallel-document-analysis
 cp .env.example .env
 # Load AWS credentials
 export AWS_ACCESS_KEY_ID="..."
