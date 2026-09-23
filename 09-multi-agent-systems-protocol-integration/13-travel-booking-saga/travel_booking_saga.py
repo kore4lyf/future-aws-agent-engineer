@@ -132,18 +132,26 @@ def _record_compensation(name: str) -> None:
 def create_saga(saga_id: str, package: dict) -> dict:
     """Seed a saga with three pending steps at version/lock defaults."""
     steps = [
-        {"name": cfg["name"], "status": "pending", "detail": None}
+        {
+            "name": cfg["name"],
+            "status": "pending",
+            "booking_ref": None,
+            "compensation_ref": None,
+            "detail": None,
+        }
         for cfg in AGENTS_CONFIG
     ]
     item = {
         "saga_id": saga_id,
         "status": "running",
+        "current_phase": "forward",
         "package": to_dynamo(package),
         "steps": to_dynamo(steps),
         "lock": False,
         "compensations_done": 0,
         "compensations_needed": 0,
         "failed_step": None,
+        "refund_total": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     saga_table.put_item(Item=item)
@@ -247,44 +255,59 @@ def increment_barrier(saga_id: str) -> tuple[int, int]:
 # ============================================================================
 
 def book_flight_logic(package: dict) -> dict:
-    if package.get("fail_at") == "flight":
+    if package.get("simulate_failure") == "flight" or package.get("fail_at") == "flight":
         raise RuntimeError("Airline inventory unavailable")
     return {
         "confirmation": f"FLT-{package['package_id'][-3:]}",
         "route": f"{package['origin']}->{package['destination']}",
         "cabin": package.get("cabin", "economy"),
+        "price": package.get("flight_price", 0),
     }
 
 
 def cancel_flight_logic(package: dict) -> dict:
-    return {"cancelled": True, "refund": "full"}
+    return {
+        "cancelled": True,
+        "confirmation": f"FLT-{package['package_id'][-3:]}",
+        "refund_amount": package.get("flight_price", 0),
+    }
 
 
 def book_hotel_logic(package: dict) -> dict:
-    if package.get("fail_at") == "hotel":
-        raise RuntimeError("Hotel sold out for selected dates")
+    if package.get("simulate_failure") == "hotel" or package.get("fail_at") == "hotel":
+        raise RuntimeError("No rooms available")
     return {
-        "confirmation": f"HOT-{package['package_id'][-3:]}",
+        "confirmation": f"HTL-{package['package_id'][-3:]}",
         "nights": package.get("nights", 3),
         "property": package.get("hotel", "City Suites"),
+        "price": package.get("hotel_price", 0),
     }
 
 
 def cancel_hotel_logic(package: dict) -> dict:
-    return {"cancelled": True, "refund": "full"}
+    return {
+        "cancelled": True,
+        "confirmation": f"HTL-{package['package_id'][-3:]}",
+        "refund_amount": package.get("hotel_price", 0),
+    }
 
 
 def book_car_logic(package: dict) -> dict:
-    if package.get("fail_at") == "car":
-        raise RuntimeError("No cars available at counter")
+    if package.get("simulate_failure") == "car" or package.get("fail_at") == "car":
+        raise RuntimeError("No cars available at destination")
     return {
         "confirmation": f"CAR-{package['package_id'][-3:]}",
         "class": package.get("car_class", "midsize"),
+        "price": package.get("car_price", 0),
     }
 
 
 def cancel_car_logic(package: dict) -> dict:
-    return {"cancelled": True, "refund": "full"}
+    return {
+        "cancelled": True,
+        "confirmation": f"CAR-{package['package_id'][-3:]}",
+        "refund_amount": package.get("car_price", 0),
+    }
 
 
 BOOK_LOGICS = {
@@ -322,12 +345,21 @@ def run_agent_with_retry(agent_builder, prompt: str, max_retries: int = 3,
 
 def _booking_tool(service: str, saga_id: str, cancel_mode: bool):
     """Build the @tool that either books or cancels one service."""
+    index = next(c["index"] for c in AGENTS_CONFIG if c["name"] == service)
 
     if cancel_mode:
         def cancel_fn(package_id: str) -> str:
             saga = get_saga(saga_id)
             package = from_dynamo(saga["package"])
             result = CANCEL_LOGICS[service](package)
+            refund = int(result.get("refund_amount", 0))
+            update_step(saga_id, index, {
+                "compensation_ref": result.get("confirmation"),
+                "refund_amount": refund,
+            })
+            if refund:
+                current = int(saga.get("refund_total", 0))
+                update_saga(saga_id, {"refund_total": current + refund})
             _record_compensation(service)
             return json.dumps({
                 "service": service,
@@ -342,7 +374,6 @@ def _booking_tool(service: str, saga_id: str, cancel_mode: bool):
     def book_fn(package_id: str) -> str:
         saga = get_saga(saga_id)
         package = from_dynamo(saga["package"])
-        index = next(c["index"] for c in AGENTS_CONFIG if c["name"] == service)
         try:
             result = BOOK_LOGICS[service](package)
         except Exception as error:
@@ -361,6 +392,7 @@ def _booking_tool(service: str, saga_id: str, cancel_mode: bool):
 
         update_step(saga_id, index, {
             "status": "completed",
+            "booking_ref": result.get("confirmation"),
             "detail": result,
         })
         _record_forward(service)
@@ -428,6 +460,7 @@ def run_saga(saga_id: str) -> dict:
     failed_step: int | None = None
 
     for cfg in AGENTS_CONFIG:
+        update_saga(saga_id, {"current_phase": cfg["name"]})
         update_step(saga_id, cfg["index"], {"status": "executing"})
         builder = BUILDERS[cfg["name"]]
         prompt = f"{cfg['prompt']} Use package_id={package_id}."
@@ -444,7 +477,8 @@ def run_saga(saga_id: str) -> dict:
             break
 
         step = get_saga(saga_id)["steps"][cfg["index"]]
-        print(f"  forward {cfg['name']:8s} -> {step['status']}")
+        print(f"  forward {cfg['name']:8s} -> {step['status']}"
+              + (f"  ref={step.get('booking_ref')}" if step.get("booking_ref") else ""))
         if step["status"] == "failed":
             failed_step = cfg["index"]
             print(f"  step failed: {step.get('detail')}")
@@ -458,7 +492,7 @@ def run_saga(saga_id: str) -> dict:
             break
 
     if failed_step is None:
-        result = update_saga(saga_id, {"status": "completed"})
+        result = update_saga(saga_id, {"status": "completed", "current_phase": "done"})
         print("  saga status: completed")
         return result
 
@@ -467,7 +501,11 @@ def run_saga(saga_id: str) -> dict:
     print(f"Saga {saga_id} - compensation (reverse order)")
     print("=" * 70)
 
-    update_saga(saga_id, {"status": "compensating", "failed_step": failed_step})
+    update_saga(saga_id, {
+        "status": "compensating",
+        "failed_step": failed_step,
+        "current_phase": "compensation",
+    })
 
     if not acquire_lock(saga_id):
         raise SagaError(f"Could not acquire lock for saga {saga_id}")
@@ -494,7 +532,9 @@ def run_saga(saga_id: str) -> dict:
             )
             update_step(saga_id, idx, {"status": "compensated"})
             done, needed = increment_barrier(saga_id)
+            refreshed = get_saga(saga_id)["steps"][idx]
             print(f"  compensate {step['name']:8s} -> {step['status']}"
+                  f"  ref={refreshed.get('compensation_ref')}"
                   f"  barrier {done}/{needed}")
 
         # Barrier gates resolution: only fail once every compensation reports back
@@ -505,8 +545,10 @@ def run_saga(saga_id: str) -> dict:
             raise SagaError(
                 f"Barrier not satisfied: {done}/{needed} compensations done"
             )
-        update_saga(saga_id, {"status": "failed"})
+        update_saga(saga_id, {"status": "failed", "current_phase": "resolved"})
+        saga = get_saga(saga_id)
         print(f"  saga status: failed (barrier {done}/{needed})")
+        print(f"  total refund: ${int(saga.get('refund_total', 0))}")
     finally:
         release_lock(saga_id)
 
@@ -526,16 +568,20 @@ def run_scenario_success(saga_id: str = "SAGA-001") -> dict:
     package = {
         "package_id": "PKG-001",
         "customer": "Alice",
-        "origin": "SFO",
-        "destination": "NYC",
-        "cabin": "economy",
-        "nights": 3,
-        "hotel": "City Suites",
+        "origin": "New York",
+        "destination": "Paris",
+        "cabin": "business",
+        "nights": 5,
+        "hotel": "Rive Gauche Hotel",
         "car_class": "midsize",
+        "flight_price": 1200,
+        "hotel_price": 900,
+        "car_price": 210,
+        "simulate_failure": None,
         "fail_at": None,
     }
     create_saga(saga_id, package)
-    print(f"Created {saga_id} (Alice SFO->NYC, no failure injected)")
+    print(f"Created {saga_id} (Alice New York->Paris, no failure injected)")
 
     final = run_saga(saga_id)
     metrics = get_metrics()
@@ -555,15 +601,19 @@ def run_scenario_rollback(saga_id: str = "SAGA-002") -> dict:
         "package_id": "PKG-002",
         "customer": "Bob",
         "origin": "LAX",
-        "destination": "LAS",
+        "destination": "Tokyo",
         "cabin": "economy",
-        "nights": 2,
-        "hotel": "Strip View Inn",
+        "nights": 4,
+        "hotel": "Shinjuku Grand",
         "car_class": "compact",
+        "flight_price": 950,
+        "hotel_price": 640,
+        "car_price": 180,
+        "simulate_failure": "car",
         "fail_at": "car",
     }
     create_saga(saga_id, package)
-    print(f"Created {saga_id} (Bob LAX->LAS, fail_at=car)")
+    print(f"Created {saga_id} (Bob LAX->Tokyo, simulate_failure=car)")
 
     final = run_saga(saga_id)
     metrics = get_metrics()
@@ -582,17 +632,21 @@ def run_scenario_mid_failure(saga_id: str = "SAGA-003") -> dict:
 
     package = {
         "package_id": "PKG-003",
-        "customer": "Carlos",
+        "customer": "Carol",
         "origin": "ORD",
-        "destination": "MIA",
+        "destination": "London",
         "cabin": "economy",
-        "nights": 4,
-        "hotel": "Beach Resort",
+        "nights": 3,
+        "hotel": "Thames View",
         "car_class": "suv",
+        "flight_price": 780,
+        "hotel_price": 540,
+        "car_price": 240,
+        "simulate_failure": "hotel",
         "fail_at": "hotel",
     }
     create_saga(saga_id, package)
-    print(f"Created {saga_id} (Carlos ORD->MIA, fail_at=hotel)")
+    print(f"Created {saga_id} (Carol ORD->London, simulate_failure=hotel)")
 
     final = run_saga(saga_id)
     metrics = get_metrics()
@@ -603,16 +657,39 @@ def run_scenario_mid_failure(saga_id: str = "SAGA-003") -> dict:
 
 
 def _print_saga(saga: dict) -> None:
-    steps = ", ".join(f"{s['name']}={s['status']}" for s in saga["steps"])
+    steps = ", ".join(
+        f"{s['name']}={s['status']}"
+        + (f"({s.get('booking_ref')})" if s.get("booking_ref") else "")
+        for s in saga["steps"]
+    )
     print(f"Final: status={saga['status']}  lock={saga['lock']}  "
           f"barrier={saga['compensations_done']}/{saga['compensations_needed']}  "
-          f"failed_step={saga.get('failed_step')}")
+          f"failed_step={saga.get('failed_step')}  "
+          f"refund_total=${int(saga.get('refund_total', 0))}")
     print(f"  steps: {steps}")
 
 
 # ============================================================================
 # MAIN
 # ============================================================================
+
+def _print_insights() -> None:
+    print("\n" + "=" * 70)
+    print("Key insights")
+    print("=" * 70)
+    insights = [
+        "Saga pattern - every step has a compensating action",
+        "Compensating transactions - undo completed work on failure",
+        "Reverse order - unwind from the most recent completed step",
+        "State machine - DynamoDB step statuses make progress explicit",
+        "Distributed lock - only one compensator runs a saga at a time",
+        "Barrier counter - resolution waits for all compensations",
+        "Idempotency - cancel tools are safe to retry",
+        "Crash recovery - durable state resumes after restart",
+    ]
+    for i, text in enumerate(insights, 1):
+        print(f"  {i}. {text}")
+
 
 def main() -> None:
     """CLI entrypoint. Runs all three saga scenarios and prints the report."""
@@ -634,8 +711,10 @@ def main() -> None:
         steps = {s["name"]: s["status"] for s in saga["steps"]}
         print(f"  {saga['saga_id']}: status={saga['status']}  "
               f"barrier={saga['compensations_done']}/{saga['compensations_needed']}  "
+              f"refund=${int(saga.get('refund_total', 0))}  "
               f"steps={steps}")
 
+    _print_insights()
     print("\nWhy reverse order? Later steps may depend on earlier ones; "
           "unwinding from the most recent completed step prevents orphans.")
 

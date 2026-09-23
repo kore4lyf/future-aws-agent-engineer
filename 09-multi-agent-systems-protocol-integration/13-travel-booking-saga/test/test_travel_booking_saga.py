@@ -52,11 +52,15 @@ def test_create_saga_seeds_three_pending_steps():
     item = mock_table.put_item.call_args[1]["Item"]
     assert item["saga_id"] == "SAGA-001"
     assert item["status"] == "running"
+    assert item["current_phase"] == "forward"
     assert item["lock"] is False
     assert item["compensations_done"] == 0
     assert item["compensations_needed"] == 0
+    assert item["refund_total"] == 0
     assert [s["name"] for s in item["steps"]] == ["flight", "hotel", "car"]
     assert all(s["status"] == "pending" for s in item["steps"])
+    assert all(s["booking_ref"] is None for s in item["steps"])
+    assert all(s["compensation_ref"] is None for s in item["steps"])
     assert result["status"] == "running"
 
 
@@ -166,19 +170,37 @@ def test_book_flight_raises_when_fail_at_flight():
 
 
 def test_book_hotel_raises_when_fail_at_hotel():
-    with pytest.raises(RuntimeError, match="Hotel sold out"):
+    with pytest.raises(RuntimeError, match="No rooms available"):
         tbs.book_hotel_logic({"package_id": "PKG-003", "fail_at": "hotel"})
 
 
 def test_book_car_raises_when_fail_at_car():
-    with pytest.raises(RuntimeError, match="No cars available"):
+    with pytest.raises(RuntimeError, match="No cars available at destination"):
         tbs.book_car_logic({"package_id": "PKG-002", "fail_at": "car"})
 
 
-def test_cancel_logics_all_succeed():
-    package = {"package_id": "PKG-001"}
-    for fn in (tbs.cancel_flight_logic, tbs.cancel_hotel_logic, tbs.cancel_car_logic):
-        assert fn(package) == {"cancelled": True, "refund": "full"}
+def test_cancel_logics_return_refund_amounts():
+    package = {
+        "package_id": "PKG-001",
+        "flight_price": 1200,
+        "hotel_price": 900,
+        "car_price": 210,
+    }
+    flight = tbs.cancel_flight_logic(package)
+    hotel = tbs.cancel_hotel_logic(package)
+    car = tbs.cancel_car_logic(package)
+    assert flight["cancelled"] is True
+    assert flight["confirmation"] == "FLT-001"
+    assert flight["refund_amount"] == 1200
+    assert hotel["confirmation"] == "HTL-001"
+    assert hotel["refund_amount"] == 900
+    assert car["refund_amount"] == 210
+
+
+def test_book_hotel_uses_htl_prefix():
+    result = tbs.book_hotel_logic({"package_id": "PKG-001", "nights": 5})
+    assert result["confirmation"] == "HTL-001"
+    assert result["nights"] == 5
 
 
 # --- Agent builders flip tools via cancel_mode ---

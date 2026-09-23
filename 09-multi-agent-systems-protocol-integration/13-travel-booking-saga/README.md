@@ -15,9 +15,9 @@ Python orchestrator coordinates three LLM booking agents (Flight, Hotel, Car) wi
 
 ## Scenarios
 
-1. **Success** — all three complete (SAGA-001)
-2. **Rollback** — car fails → compensate hotel, then flight (SAGA-002)
-3. **Mid-path** — hotel fails after flight → only flight compensated (SAGA-003)
+1. **Success** — Alice New York→Paris, business flight, 5 nights, midsize car (SAGA-001)
+2. **Rollback** — Bob LAX→Tokyo, car fails → compensate hotel, then flight (SAGA-002)
+3. **Mid-path** — Carol ORD→London, hotel fails → only flight compensated (SAGA-003)
 
 ## Why reverse order?
 
