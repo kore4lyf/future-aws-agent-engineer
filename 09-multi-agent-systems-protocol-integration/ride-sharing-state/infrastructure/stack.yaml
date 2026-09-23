@@ -1,0 +1,37 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: DynamoDB tables for ride-sharing shared-state demo (optimistic locking + rider memory)
+
+Resources:
+  TripStateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: trip-state
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: trip_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: trip_id
+          KeyType: HASH
+
+  RiderMemoryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: rider-memory
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: rider_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: rider_id
+          KeyType: HASH
+
+Outputs:
+  TripTableName:
+    Value: !Ref TripStateTable
+  TripTableArn:
+    Value: !GetAtt TripStateTable.Arn
+  RiderMemoryTableName:
+    Value: !Ref RiderMemoryTable
+  RiderMemoryTableArn:
+    Value: !GetAtt RiderMemoryTable.Arn
