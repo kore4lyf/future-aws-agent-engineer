@@ -1,6 +1,6 @@
 # Multi-Agent Systems Protocol Integration
 
-Eleven projects covering sequential, parallel, conditional, hierarchical, and shared-state agent orchestration on Amazon Bedrock.
+Twelve projects covering sequential, parallel, conditional, hierarchical, and shared-state agent orchestration on Amazon Bedrock.
 
 ## Projects (chronological order)
 
@@ -17,6 +17,7 @@ Eleven projects covering sequential, parallel, conditional, hierarchical, and sh
 | 09 | `09-financial-router` | 4-tier hybrid routing + DynamoDB audit | ✅ 13 tests |
 | 10 | `10-telecom-router` | 4-tier hybrid routing, 20 tickets, DynamoDB audit | ✅ 30 tests |
 | 11 | `11-ride-sharing-state` | Shared state, optimistic locking, concurrent agents | ✅ 19 tests |
+| 12 | `12-food-delivery-state` | Shared state, optimistic locking, 4 agents, recovery | ✅ 18 passed, 2 skipped |
 
 Each project has its own `pyproject.toml`, tests under `test/`, and `.env.example`; READMEs exist except for 06–09.
 
@@ -67,6 +68,11 @@ uv run python main.py
 cd 11-ride-sharing-state
 uv run --with pytest --with boto3 pytest -q
 uv run python main.py
+
+# Food Delivery State
+cd 12-food-delivery-state
+uv run --with pytest --with boto3 pytest -q
+uv run python main.py
 ```
 
-Load AWS credentials from your session environment (never commit them). CloudFormation stacks used by the hybrid routers and shared-state demo: `lesson-05-demo-routing`, `lesson-05-exercise-routing`, `lesson-06-demo-shared-state`.
+Load AWS credentials from your session environment (never commit them). CloudFormation stacks used by the hybrid routers and shared-state demos: `lesson-05-demo-routing`, `lesson-05-exercise-routing`, `lesson-06-demo-shared-state`, `lesson-06-exercise-shared-state`.
