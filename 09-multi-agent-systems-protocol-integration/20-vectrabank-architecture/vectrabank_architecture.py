@@ -125,11 +125,11 @@ AGENT_DEFINITIONS = [
     },
     {
         "name": "FinancialAdvisor",
-        "model": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "model": "us.anthropic.claude-sonnet-4-20250514-v1:0",
         "temperature": 0.1,
-        "daily_requests": 5_000,
+        "daily_requests": 10_000,
         "tokens_per_request": 2_500,
-        "role": "Synthesizes financial analysis and provides regulatory-compliant guidance",
+        "role": "Synthesizes retrieved data into grounded financial analysis with citations",
     },
 ]
 
@@ -144,44 +144,40 @@ MONITORING_STRATEGY: dict[str, Any] = {
         "Latency P50/P99 by agent",
         "Error rate by agent and error type",
         "Guardrail blocks by policy (PII, topic, content, word)",
-        "Model token usage and cost per agent",
-        "VPC network throughput and NAT gateway latency",
+        "RAG Retrieval Quality (avg relevance score)",
+        "Kill Switch Status",
     ],
     "alarms": [
         {
             "name": "HighErrorRate",
             "metric": "AgentCore/Errors",
-            "threshold": 0.05,
+            "threshold": 0.02,
             "period": 300,
             "action": "SNS -> kill-switch-topic -> Lambda disables runtime",
-            "description": "Error rate exceeds 5% in 5 minutes - automatic kill switch",
+            "description": "Error rate exceeds 2% in 5 minutes - automatic kill switch",
         },
         {
             "name": "HighLatency",
             "metric": "AgentCore/Latency",
             "stat": "p99",
-            "threshold": 10.0,
+            "threshold": 8.0,
             "period": 300,
             "action": "SNS -> ops-team-pager",
-            "description": "P99 latency exceeds 10 seconds - page on-call",
+            "description": "P99 latency exceeds 8 seconds - page on-call",
         },
         {
-            "name": "GuardrailViolations",
-            "metric": "GuardrailBlocks",
-            "threshold": 10,
+            "name": "GuardrailViolationSpike",
+            "metric": "Guardrail/TotalBlocks",
+            "threshold": 50,
             "period": 300,
-            "action": "SNS -> compliance-team-alert",
-            "description": "10+ guardrail blocks in 5 minutes - notify compliance team",
+            "action": "SNS -> security-team + rate-limit-increase",
+            "description": "50+ guardrail blocks in 5 minutes - potential coordinated attack",
         },
     ],
     "xray_tracing": {
         "enabled": True,
-        "sampling_rate": 1.0,  # 100% for financial audit trail
-        "annotations": ["claim_type", "agent_name", "model_id", "user_tier"],
-        "sampling_rules": [
-            {"priority": 1, "rate": 1.0, " ReservoirSize": 10000},  # VIP users
-            {"priority": 10, "rate": 0.1, "reservoir_size": 1000},  # Standard users
-        ],
+        "sampling_rate": 0.10,
+        "annotations": ["query_type", "agent_name", "model_id", "customer_tier"],
     },
 }
 
@@ -259,7 +255,7 @@ OPERATIONAL_RUNBOOKS = {
         ],
     },
     "emergency_rollback": {
-        "name": "Emergency Rollback",
+        "name": "Rollback",
         "description": "Immediate rollback to previous stable version",
         "steps": [
             "1. Identify last known good version from deployment history",
@@ -273,8 +269,8 @@ OPERATIONAL_RUNBOOKS = {
             "9. Schedule post-mortem within 24 hours",
         ],
     },
-    "kill_switch": {
-        "name": "Kill Switch",
+    "kill_switch_triggered": {
+        "name": "Kill Switch Triggered",
         "description": "Emergency disable of the runtime during active security incident",
         "steps": [
             "1. Trigger immediate disable: aws bedrock-agentcore-control update-agent-runtime --agent-runtime-name vectrabank_runtime --status DISABLED",
@@ -286,9 +282,9 @@ OPERATIONAL_RUNBOOKS = {
             "7. Document incident in compliance tracker with timestamps and affected services",
         ],
     },
-    "investigate_high_latency": {
-        "name": "Investigate High Latency",
-        "description": "Systematic troubleshooting for P99 latency exceeding 10 seconds",
+    "latency_investigation": {
+        "name": "Latency Investigation",
+        "description": "Systematic troubleshooting for P99 latency exceeding 8 seconds",
         "steps": [
             "1. Check CloudWatch dashboard for latency spike timeline",
             "2. Identify which agent(s) show elevated latency",

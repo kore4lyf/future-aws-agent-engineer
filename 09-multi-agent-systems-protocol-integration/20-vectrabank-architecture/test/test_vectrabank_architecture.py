@@ -76,7 +76,7 @@ def test_agent_tiering_lightweight_for_routing():
 
 def test_financial_advisor_uses_capable_model():
     advisor = next(a for a in vb.AGENT_DEFINITIONS if a["name"] == "FinancialAdvisor")
-    assert advisor["model"] == "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    assert advisor["model"] == "us.anthropic.claude-sonnet-4-20250514-v1:0"
     assert advisor["temperature"] == 0.1
 
 
@@ -92,12 +92,12 @@ def test_monitoring_has_three_alarms():
     names = [a["name"] for a in alarms]
     assert "HighErrorRate" in names
     assert "HighLatency" in names
-    assert "GuardrailViolations" in names
+    assert "GuardrailViolationSpike" in names
 
 
 def test_xray_sampling_rate_for_audit():
     assert vb.MONITORING_STRATEGY["xray_tracing"]["enabled"] is True
-    assert vb.MONITORING_STRATEGY["xray_tracing"]["sampling_rate"] == 1.0
+    assert vb.MONITORING_STRATEGY["xray_tracing"]["sampling_rate"] == 0.10
 
 
 # --- Cost estimation ---
@@ -119,12 +119,12 @@ def test_estimate_monthly_crops_vpc_nat():
 
 def test_runbooks_four_scenarios():
     assert len(vb.OPERATIONAL_RUNBOOKS) == 4
-    expected = {"deploy_new_version", "emergency_rollback", "kill_switch", "investigate_high_latency"}
+    expected = {"deploy_new_version", "emergency_rollback", "kill_switch_triggered", "latency_investigation"}
     assert set(vb.OPERATIONAL_RUNBOOKS.keys()) == expected
 
 
 def test_kill_switch_runbook_steps():
-    steps = vb.OPERATIONAL_RUNBOOKS["kill_switch"]["steps"]
+    steps = vb.OPERATIONAL_RUNBOOKS["kill_switch_triggered"]["steps"]
     assert any("disable" in step.lower() for step in steps)
     assert any("notify" in step.lower() for step in steps)
 
