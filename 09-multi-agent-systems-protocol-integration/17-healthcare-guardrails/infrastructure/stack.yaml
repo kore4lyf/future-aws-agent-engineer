@@ -56,6 +56,13 @@ Resources:
       WordPolicyConfig:
         ManagedWordListsConfig:
           - Type: PROFANITY
+        WordsConfig:
+          - Text: bullshit
+            InputAction: BLOCK
+            OutputAction: BLOCK
+          - Text: useless
+            InputAction: BLOCK
+            OutputAction: BLOCK
 
   TradingGuardrail:
     Type: AWS::Bedrock::Guardrail
@@ -105,6 +112,10 @@ Resources:
       WordPolicyConfig:
         ManagedWordListsConfig:
           - Type: PROFANITY
+        WordsConfig:
+          - Text: bullshit
+            InputAction: BLOCK
+            OutputAction: BLOCK
 
 Outputs:
   HealthcareGuardrailId:

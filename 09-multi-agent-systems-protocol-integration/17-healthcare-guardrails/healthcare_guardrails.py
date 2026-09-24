@@ -115,7 +115,7 @@ def apply_guardrail(text: str, direction: str = "INPUT",
             guardrailIdentifier=HEALTHCARE_GUARDRAIL_ID,
             guardrailVersion=GUARDRAIL_VERSION,
             source=direction,
-            content=[{"text": {"text": text, "contentType": "TEXT"}}],
+            content=[{"text": {"text": text}}],
         )
     except Exception as error:
         return {
