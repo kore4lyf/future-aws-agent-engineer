@@ -1,6 +1,6 @@
 # Multi-Agent Systems Protocol Integration
 
-Twenty projects covering sequential, parallel, conditional, hierarchical, shared-state, saga, RAG, governance, and production deployment patterns on Amazon Bedrock.
+Twenty-one projects covering sequential, parallel, conditional, hierarchical, shared-state, saga, RAG, governance, production deployment, and gateway patterns on Amazon Bedrock.
 
 ## Projects (chronological order)
 
@@ -26,6 +26,7 @@ Twenty projects covering sequential, parallel, conditional, hierarchical, shared
 | 18 | `18-trading-compliance` | Seven-layer governance: stricter kill switch, output guardrail, compliance agent, LLM-as-judge | ✅ unit tests |
 | 19 | `19-deployment-walkthrough` | Production deployment: AgentCore Runtime, CF exports, gated pipeline, monitoring, cost estimation | ✅ unit tests |
 | 20 | `20-vectrabank-architecture` | VPC runtime, 4-tier agents, monitoring strategy, cost estimate, operational runbooks | ✅ unit tests |
+| 21 | `21-supply-chain-gateway` | Gateway pattern: dynamic tool discovery, Lambda backends, centralized observability | ✅ unit tests |
 
 Each project has its own `pyproject.toml`, tests under `test/`, and `.env.example`; READMEs exist except for 06–09.
 
@@ -121,6 +122,11 @@ uv run python deployment_walkthrough.py
 cd 20-vectrabank-architecture
 python infrastructure/deploy_stack.py
 uv run python vectrabank_architecture.py
+
+# Supply Chain Gateway (deploy stack first)
+cd 21-supply-chain-gateway
+python infrastructure/deploy_stack.py
+uv run python supply_chain_gateway.py
 ```
 
-Load AWS credentials from your session environment (never commit them). CloudFormation stacks used by the hybrid routers, shared-state, saga, RAG, and guardrail demos: `lesson-05-demo-routing`, `lesson-05-exercise-routing`, `lesson-06-demo-shared-state`, `lesson-06-exercise-shared-state`, `lesson-07-demo-saga`, `lesson-07-exercise-saga`, `lesson-08-demo-rag`, `lesson-08-exercise-rag`, `lesson-09-demo-guardrails`, `lesson-09-exercise-guardrails`, `lesson-10-demo-runtime`, `lesson-10-exercise-runtime`.
+Load AWS credentials from your session environment (never commit them). CloudFormation stacks used by the hybrid routers, shared-state, saga, RAG, and guardrail demos: `lesson-05-demo-routing`, `lesson-05-exercise-routing`, `lesson-06-demo-shared-state`, `lesson-06-exercise-shared-state`, `lesson-07-demo-saga`, `lesson-07-exercise-saga`, `lesson-08-demo-rag`, `lesson-08-exercise-rag`, `lesson-09-demo-guardrails`, `lesson-09-exercise-guardrails`, `lesson-10-demo-runtime`, `lesson-10-exercise-runtime`, `lesson-11-demo-gateway`.
