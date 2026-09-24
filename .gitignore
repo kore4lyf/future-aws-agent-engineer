@@ -12,6 +12,11 @@ __pycache__/
 .Python
 venv/
 env/
+.venv/
+
+# Build artifacts
+*.egg-info/
+uv.lock
 
 # Generated files
 demo_config.json
