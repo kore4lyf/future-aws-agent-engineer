@@ -1,0 +1,155 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Lesson 11 demo - Lambda backends and IAM role for supply chain AgentCore Gateway
+
+Resources:
+  AgentCoreRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: lesson11-demo-supplychain-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      Policies:
+        - PolicyName: SupplyChainGatewayPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "arn:aws:logs:*:*:*"
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: "*"
+
+  InventoryApi:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: lesson11-demo-inventory-api
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt AgentCoreRole.Arn
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import json
+          INVENTORY = {
+              "DIGI-001": {"name": "Copper Wire", "stock": 1500, "reorder_point": 3000, "unit": "meters"},
+              "DIGI-002": {"name": "Copper Wire", "stock": 2500, "reorder_point": 3000, "unit": "meters"},
+              "DIGI-003": {"name": "Circuit Board", "stock": 500, "reorder_point": 1000, "unit": "units"},
+              "DIGI-004": {"name": "Sensor Module", "stock": 200, "reorder_point": 500, "unit": "units"},
+          }
+          def handler(event, context):
+              params = event.get("parameters", event)
+              item_id = params.get("item_id", "")
+              item = INVENTORY.get(item_id.upper())
+              if not item:
+                  return {"status": "success", "data": {"message": f"Item {item_id} not found", "items": list(INVENTORY.keys())}}
+              below_reorder = item["stock"] < item["reorder_point"]
+              return {"status": "success", "data": {**item, "item_id": item_id.upper(), "below_reorder_point": below_reorder}}
+
+  ShippingApi:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: lesson11-demo-shipping-api
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt AgentCoreRole.Arn
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import json
+          SHIPMENTS = {
+              "SHIP-102": {"status": "delayed", "origin": "Shanghai", "destination": "Los Angeles", "eta": "2026-03-18", "carrier": "OceanFreight Inc"},
+              "SHIP-103": {"status": "in_transit", "origin": "Tokyo", "destination": "Seattle", "eta": "2026-03-12", "carrier": "Pacific Shipping"},
+              "SHIP-104": {"status": "delivered", "origin": "Berlin", "destination": "New York", "eta": "2026-03-05", "carrier": "Atlantic Express"},
+          }
+          def handler(event, context):
+              params = event.get("parameters", event)
+              shipment_id = params.get("shipment_id", "")
+              shipment = SHIPMENTS.get(shipment_id.upper())
+              if not shipment:
+                  return {"status": "success", "data": {"message": f"Shipment {shipment_id} not found", "shipments": list(SHIPMENTS.keys())}}
+              return {"status": "success", "data": {**shipment, "shipment_id": shipment_id.upper()}}
+
+  SupplierApi:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: lesson11-demo-supplier-api
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt AgentCoreRole.Arn
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import json
+          SUPPLIERS = [
+              {"id": "SUP-001", "name": "TechParts Global", "country": "Taiwan", "lead_time_days": 14, "rating": 4.2, "min_order": 1000},
+              {"id": "SUP-002", "name": "CircuitSource Inc", "country": "USA", "lead_time_days": 7, "rating": 4.7, "min_order": 500},
+              {"id": "SUP-003", "name": "AsiaComp Electronics", "country": "China", "lead_time_days": 21, "rating": 3.8, "min_order": 2000},
+          ]
+          def handler(event, context):
+              params = event.get("parameters", event)
+              supplier_id = params.get("supplier_id")
+              if supplier_id:
+                  supplier = next((s for s in SUPPLIERS if s["id"] == supplier_id.upper()), None)
+                  return {"status": "success", "data": supplier or {"message": f"Supplier {supplier_id} not found"}}
+              return {"status": "success", "data": {"suppliers": SUPPLIERS}}
+
+  QualityInspectionApi:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: lesson11-demo-quality-inspection-api
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt AgentCoreRole.Arn
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import json
+          INSPECTIONS = {
+              "WIDGET-001": {"status": "passed", "defect_rate": 0.02, "issues": []},
+              "WIDGET-002": {"status": "failed", "defect_rate": 0.08, "issues": ["Solder joint cold", "PCB trace damage"]},
+              "WIDGET-003": {"status": "passed", "defect_rate": 0.01, "issues": []},
+          }
+          def handler(event, context):
+              params = event.get("parameters", event)
+              item_id = params.get("item_id", "")
+              if not item_id:
+                  return {"status": "success", "data": {"inspections": list(INSPECTIONS.keys())}}
+              result = INSPECTIONS.get(item_id.upper())
+              if not result:
+                  return {"status": "success", "data": {"message": f"No inspection for {item_id}", "inspections": list(INSPECTIONS.keys())}}
+              return {"status": "success", "data": {**result, "item_id": item_id.upper()}}
+
+Outputs:
+  AgentCoreRoleArn:
+    Description: IAM role ARN for AgentCore Gateway
+    Value: !GetAtt AgentCoreRole.Arn
+    Export:
+      Name: lesson-11-demo-AgentCoreRoleArn
+  InventoryLambdaArn:
+    Value: !GetAtt InventoryApi.Arn
+  ShippingLambdaArn:
+    Value: !GetAtt ShippingApi.Arn
+  SupplierLambdaArn:
+    Value: !GetAtt SupplierApi.Arn
+  QualityInspectionLambdaArn:
+    Value: !GetAtt QualityInspectionApi.Arn
