@@ -31,19 +31,23 @@ Resources:
             OutputStrength: NONE
       SensitiveInformationPolicyConfig:
         PiiEntitiesConfig:
-          - Type: SSN
+          - Type: US_SOCIAL_SECURITY_NUMBER
             Action: BLOCK
-          - Type: SSN_REGEX
+          - Type: US_PASSPORT_NUMBER
+            Action: BLOCK
+          - Type: EMAIL
+            Action: BLOCK
+          - Type: PHONE
             Action: BLOCK
       TopicPolicyConfig:
         TopicsConfig:
-          - Type: DENIED
+          - Type: DENY
             Name: LegalAdvice
             Definition: Requests for legal advice, lawsuits, malpractice claims, or attorney recommendations
             Examples:
               - Should I sue my doctor for misdiagnosis?
               - Give me legal advice about my medical case
-          - Type: DENIED
+          - Type: DENY
             Name: Prescriptions
             Definition: Requests to prescribe medication, provide prescription drugs, or recommend controlled substances
             Examples:
@@ -82,18 +86,18 @@ Resources:
             OutputStrength: NONE
       SensitiveInformationPolicyConfig:
         PiiEntitiesConfig:
-          - Type: SSN
+          - Type: US_SOCIAL_SECURITY_NUMBER
             Action: BLOCK
-          - Type: SSN_REGEX
+          - Type: EMAIL
             Action: BLOCK
       TopicPolicyConfig:
         TopicsConfig:
-          - Type: DENIED
+          - Type: DENY
             Name: InsiderTrading
             Definition: Requests to trade on material non-public information or insider tips
             Examples:
               - My friend told me about a merger before it is public. Should I buy?
-          - Type: DENIED
+          - Type: DENY
             Name: GuaranteedReturns
             Definition: Promises or requests for risk-free guaranteed investment returns
             Examples:
