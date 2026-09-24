@@ -1,6 +1,6 @@
 # Multi-Agent Systems Protocol Integration
 
-Sixteen projects covering sequential, parallel, conditional, hierarchical, shared-state, saga, and RAG agent orchestration on Amazon Bedrock.
+Seventeen projects covering sequential, parallel, conditional, hierarchical, shared-state, saga, RAG, and governance agent patterns on Amazon Bedrock.
 
 ## Projects (chronological order)
 
@@ -22,6 +22,7 @@ Sixteen projects covering sequential, parallel, conditional, hierarchical, share
 | 14 | `14-ecommerce-checkout-saga` | Checkout saga, tool-owned barrier increments | ✅ 21 tests |
 | 15 | `15-research-assistant-rag` | Parallel multi-KB RAG, aggregate/dedup, grounded synthesis | ✅ unit tests |
 | 16 | `16-clinical-literature-rag` | Clinical dual-KB RAG, structured 3-section synthesis | ✅ unit tests |
+| 17 | `17-healthcare-guardrails` | Six-layer governance: kill switch, rate limit, Bedrock guardrails, LLM-as-judge | ✅ unit tests |
 
 Each project has its own `pyproject.toml`, tests under `test/`, and `.env.example`; READMEs exist except for 06–09.
 
@@ -97,6 +98,11 @@ uv run python main.py
 cd 16-clinical-literature-rag
 uv run --with pytest --with boto3 pytest -q
 uv run python main.py
+
+# Healthcare Guardrails (needs HEALTHCARE_GUARDRAIL_ID in .env)
+cd 17-healthcare-guardrails
+uv run --with pytest --with boto3 --with python-dotenv python -m pytest test/ -q
+uv run python main.py
 ```
 
-Load AWS credentials from your session environment (never commit them). CloudFormation stacks used by the hybrid routers, shared-state, saga, and RAG demos: `lesson-05-demo-routing`, `lesson-05-exercise-routing`, `lesson-06-demo-shared-state`, `lesson-06-exercise-shared-state`, `lesson-07-demo-saga`, `lesson-07-exercise-saga`, `lesson-08-demo-rag`, `lesson-08-exercise-rag`.
+Load AWS credentials from your session environment (never commit them). CloudFormation stacks used by the hybrid routers, shared-state, saga, RAG, and guardrail demos: `lesson-05-demo-routing`, `lesson-05-exercise-routing`, `lesson-06-demo-shared-state`, `lesson-06-exercise-shared-state`, `lesson-07-demo-saga`, `lesson-07-exercise-saga`, `lesson-08-demo-rag`, `lesson-08-exercise-rag`, `lesson-09-demo-guardrails`.

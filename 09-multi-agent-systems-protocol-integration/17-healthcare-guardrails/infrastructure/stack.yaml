@@ -1,0 +1,113 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Lesson 9 demo - Bedrock healthcare + trading guardrails for governance pipeline
+
+Resources:
+  HealthcareGuardrail:
+    Type: AWS::Bedrock::Guardrail
+    Properties:
+      Name: lesson09-healthcare-guardrail
+      Description: Telehealth intake guardrails - content, PII (SSN), topic denial, profanity
+      BlockedInputMessaging: This request was blocked by the healthcare safety guardrail.
+      BlockedOutputsMessaging: This response was blocked by the healthcare safety guardrail.
+      ContentPolicyConfig:
+        FiltersConfig:
+          - Type: SEXUAL
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: VIOLENCE
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: HATE
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: INSULTS
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: MISCONDUCT
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: PROMPT_ATTACK
+            InputStrength: HIGH
+            OutputStrength: NONE
+      SensitiveInformationPolicyConfig:
+        PiiEntitiesConfig:
+          - Type: SSN
+            Action: BLOCK
+          - Type: SSN_REGEX
+            Action: BLOCK
+      TopicPolicyConfig:
+        TopicsConfig:
+          - Type: DENIED
+            Name: LegalAdvice
+            Definition: Requests for legal advice, lawsuits, malpractice claims, or attorney recommendations
+            Examples:
+              - Should I sue my doctor for misdiagnosis?
+              - Give me legal advice about my medical case
+          - Type: DENIED
+            Name: Prescriptions
+            Definition: Requests to prescribe medication, provide prescription drugs, or recommend controlled substances
+            Examples:
+              - Can you prescribe antibiotics for my infection?
+              - I need a prescription for painkillers
+      WordPolicyConfig:
+        ManagedWordListsConfig:
+          - Type: PROFANITY
+
+  TradingGuardrail:
+    Type: AWS::Bedrock::Guardrail
+    Properties:
+      Name: lesson09-trading-guardrail
+      Description: Trading compliance guardrails for the lesson 9 exercise
+      BlockedInputMessaging: This request was blocked by the trading compliance guardrail.
+      BlockedOutputsMessaging: This response was blocked by the trading compliance guardrail.
+      ContentPolicyConfig:
+        FiltersConfig:
+          - Type: SEXUAL
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: VIOLENCE
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: HATE
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: INSULTS
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: MISCONDUCT
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: PROMPT_ATTACK
+            InputStrength: HIGH
+            OutputStrength: NONE
+      SensitiveInformationPolicyConfig:
+        PiiEntitiesConfig:
+          - Type: SSN
+            Action: BLOCK
+          - Type: SSN_REGEX
+            Action: BLOCK
+      TopicPolicyConfig:
+        TopicsConfig:
+          - Type: DENIED
+            Name: InsiderTrading
+            Definition: Requests to trade on material non-public information or insider tips
+            Examples:
+              - My friend told me about a merger before it is public. Should I buy?
+          - Type: DENIED
+            Name: GuaranteedReturns
+            Definition: Promises or requests for risk-free guaranteed investment returns
+            Examples:
+              - How can I guarantee 50 percent returns with no risk?
+      WordPolicyConfig:
+        ManagedWordListsConfig:
+          - Type: PROFANITY
+
+Outputs:
+  HealthcareGuardrailId:
+    Description: Short guardrail ID for HEALTHCARE_GUARDRAIL_ID
+    Value: !GetAtt HealthcareGuardrail.GuardrailId
+  HealthcareGuardrailArn:
+    Value: !Ref HealthcareGuardrail
+  TradingGuardrailId:
+    Description: Short guardrail ID for TRADING_GUARDRAIL_ID (exercise)
+    Value: !GetAtt TradingGuardrail.GuardrailId
