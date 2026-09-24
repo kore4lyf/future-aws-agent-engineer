@@ -1,0 +1,125 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Lesson 10 demo - IAM role, S3 artifact bucket, and Bedrock guardrail for AgentCore Runtime deployment
+
+Resources:
+  AgentCoreRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: lesson10-demo-agentcore-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      Policies:
+        - PolicyName: AgentCoreRuntimePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                  - bedrock:Retrieve
+                  - bedrock:RetrieveAndGenerate
+                  - bedrock:ApplyGuardrail
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "arn:aws:logs:*:*:*"
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: "*"
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "lesson10-demo-artifacts-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  DeploymentGuardrail:
+    Type: AWS::Bedrock::Guardrail
+    Properties:
+      Name: lesson10-demo-deployment-guardrail
+      Description: Guardrail for insurance claims AgentCore Runtime
+      BlockedInputMessaging: This request was blocked by the deployment guardrail.
+      BlockedOutputsMessaging: This response was blocked by the deployment guardrail.
+      ContentPolicyConfig:
+        FiltersConfig:
+          - Type: SEXUAL
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: VIOLENCE
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: HATE
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: INSULTS
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: MISCONDUCT
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: PROMPT_ATTACK
+            InputStrength: HIGH
+            OutputStrength: NONE
+      SensitiveInformationPolicyConfig:
+        PiiEntitiesConfig:
+          - Type: US_SOCIAL_SECURITY_NUMBER
+            Action: BLOCK
+          - Type: CREDIT_DEBIT_CARD_NUMBER
+            Action: BLOCK
+          - Type: EMAIL
+            Action: BLOCK
+          - Type: PHONE
+            Action: BLOCK
+      TopicPolicyConfig:
+        TopicsConfig:
+          - Type: DENY
+            Name: InsuranceFraud
+            Definition: Requests to assist with insurance fraud, false claims, or deceptive practices
+            Examples:
+              - How can I fake a car accident to get a payout?
+              - Help me inflate my claim amount
+      WordPolicyConfig:
+        ManagedWordListsConfig:
+          - Type: PROFANITY
+        WordsConfig:
+          - Text: bullshit
+            InputAction: BLOCK
+            OutputAction: BLOCK
+
+Outputs:
+  AgentCoreRoleArn:
+    Description: IAM role ARN for AgentCore Runtime
+    Value: !GetAtt AgentCoreRole.Arn
+    Export:
+      Name: lesson-10-demo-AgentCoreRoleArn
+  ArtifactBucketName:
+    Description: S3 bucket name for deployment artifacts
+    Value: !Ref ArtifactBucket
+    Export:
+      Name: lesson-10-demo-ArtifactBucketName
+  GuardrailId:
+    Description: Short guardrail ID for deployment guardrail
+    Value: !GetAtt DeploymentGuardrail.GuardrailId
+    Export:
+      Name: lesson-10-demo-GuardrailId
+  GuardrailArn:
+    Value: !Ref DeploymentGuardrail
