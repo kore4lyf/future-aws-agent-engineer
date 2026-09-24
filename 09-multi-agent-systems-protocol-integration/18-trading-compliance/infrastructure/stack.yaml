@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Lesson 9 exercise - Bedrock trading guardrail for governance pipeline
+
+Resources:
+  TradingGuardrail:
+    Type: AWS::Bedrock::Guardrail
+    Properties:
+      Name: lesson09-exercise-trading-guardrail
+      Description: Trading compliance guardrails - PII, topics, content, profanity
+      BlockedInputMessaging: This request was blocked by the trading compliance guardrail.
+      BlockedOutputsMessaging: This response was blocked by the trading compliance guardrail.
+      ContentPolicyConfig:
+        FiltersConfig:
+          - Type: SEXUAL
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: VIOLENCE
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: HATE
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: INSULTS
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: MISCONDUCT
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: PROMPT_ATTACK
+            InputStrength: HIGH
+            OutputStrength: NONE
+      SensitiveInformationPolicyConfig:
+        PiiEntitiesConfig:
+          - Type: CREDIT_DEBIT_CARD_NUMBER
+            Action: BLOCK
+          - Type: US_SOCIAL_SECURITY_NUMBER
+            Action: BLOCK
+          - Type: US_BANK_ACCOUNT_NUMBER
+            Action: BLOCK
+          - Type: EMAIL
+            Action: ANONYMIZE
+          - Type: PHONE
+            Action: ANONYMIZE
+      TopicPolicyConfig:
+        TopicsConfig:
+          - Type: DENY
+            Name: InsiderTrading
+            Definition: Requests to trade on material non-public information or insider tips
+            Examples:
+              - My friend told me about a merger before it is public. Should I buy?
+              - I have insider information about an earnings announcement
+          - Type: DENY
+            Name: GuaranteedReturns
+            Definition: Promises or requests for risk-free guaranteed investment returns
+            Examples:
+              - How can I guarantee 50 percent returns with no risk?
+              - What is the safest investment with guaranteed 100% return?
+      WordPolicyConfig:
+        ManagedWordListsConfig:
+          - Type: PROFANITY
+        WordsConfig:
+          - Text: bullshit
+            InputAction: BLOCK
+            OutputAction: BLOCK
+
+Outputs:
+  TradingGuardrailId:
+    Description: Short guardrail ID for TRADING_GUARDRAIL_ID
+    Value: !GetAtt TradingGuardrail.GuardrailId
+  TradingGuardrailArn:
+    Value: !Ref TradingGuardrail
