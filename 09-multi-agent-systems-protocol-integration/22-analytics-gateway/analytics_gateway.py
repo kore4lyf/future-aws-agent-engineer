@@ -2,11 +2,11 @@
 # Analytics Gateway — Lesson 11 Exercise
 # =============================================================================
 # AI-powered analytics assistant using the gateway pattern:
-#   1. LambdaGateway: register, discover, invoke tool backends
-#   2. Agent builds system prompt from gateway registry at runtime
-#   3. Tool shims delegate to gateway (no backend logic)
-#   4. Dynamic registration: stock_price added without agent restart
-# ============================================================================
+#   - LambdaGateway: register, discover, invoke tool backends
+#   - Agent builds system prompt from gateway.discover_tools() at runtime
+#   - @tool shims are thin pass-throughs to gateway.invoke_tool()
+#   - stock_price registered dynamically; agent picks it up on rebuild
+# =============================================================================
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ STOCK_PRICE_LAMBDA = os.environ.get("STOCK_PRICE_LAMBDA", "lesson11-exercise-sto
 
 
 # ============================================================================
-# LambdaGateway: provided — register, discover, invoke
+# LambdaGateway (provided — do not modify)
 # ============================================================================
 
 class LambdaGateway:
@@ -85,60 +85,70 @@ class LambdaGateway:
 
 
 # ============================================================================
+# Retry helper
+# ============================================================================
+
+def run_agent_with_retry(build_fn, query: str, max_retries: int = 2) -> str:
+    """Build a fresh agent, run a query, retry on transient failure."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            agent = build_fn()
+            return str(agent(query))
+        except Exception as exc:
+            if attempt == max_retries:
+                raise
+            print(f"  [retry {attempt}/{max_retries}] {exc}")
+
+
+# ============================================================================
 # Build analytics agent — system prompt from gateway registry
 # ============================================================================
 
 def build_analytics_agent(gateway: LambdaGateway) -> Agent:
-    """Build agent whose tool catalog comes from the gateway."""
-    model = BedrockModel(model_id=NOVA_LITE_MODEL, region_name=AWS_REGION, temperature=0.0)
-
-    tool_list = "\n".join(
-        f"  - {t['name']}: {t['description']}"
-        for t in gateway.discover_tools()
+    """Construct agent whose tool catalog is derived from the gateway."""
+    model = BedrockModel(
+        model_id=NOVA_LITE_MODEL,
+        region_name=AWS_REGION,
+        temperature=0.1,
     )
 
-    system_prompt = f"""You are an AI-powered analytics assistant.
-You have access to the following tools via AgentCore Gateway:
+    available = gateway.discover_tools()
+    tool_list = "\n".join(
+        f"  - {t['name']}: {t['description']}" for t in available
+    )
+
+    system_prompt = f"""You are a data analytics agent. You have access to the following
+tools via AgentCore Gateway:
 
 {tool_list}
 
-Use the appropriate tool for each query. When a user asks about weather,
-currency conversion, news, or stock prices, route the query to the correct
-backend and present the result clearly."""
+Use the appropriate tool for each query. Report results concisely."""
 
     @tool
     def get_weather(city: str) -> str:
-        """Get current weather conditions for a city."""
-        result = gateway.invoke_tool("weather_api", {"city": city})
-        return json.dumps(result, indent=2)
+        return json.dumps(gateway.invoke_tool("weather_lambda", {"city": city}))
 
     @tool
     def convert_currency(from_currency: str, to_currency: str, amount: float = 1.0) -> str:
-        """Convert an amount from one currency to another."""
-        result = gateway.invoke_tool("currency_api", {
+        return json.dumps(gateway.invoke_tool("currency_lambda", {
             "from_currency": from_currency,
             "to_currency": to_currency,
             "amount": amount,
-        })
-        return json.dumps(result, indent=2)
+        }))
 
     @tool
     def get_news(category: str = "") -> str:
-        """Get latest news articles, optionally filtered by category."""
         params = {"category": category} if category else {}
-        result = gateway.invoke_tool("news_api", params)
-        return json.dumps(result, indent=2)
+        return json.dumps(gateway.invoke_tool("news_api", params))
 
     @tool
-    def get_stock_price(symbol: str) -> str:
-        """Get current stock price and change percentage for a symbol."""
-        result = gateway.invoke_tool("stock_price_api", {"symbol": symbol})
-        return json.dumps(result, indent=2)
+    def stock_price(symbol: str) -> str:
+        return json.dumps(gateway.invoke_tool("stock_price", {"symbol": symbol}))
 
     return Agent(
         model=model,
         system_prompt=system_prompt,
-        tools=[get_weather, convert_currency, get_news, get_stock_price],
+        tools=[get_weather, convert_currency, get_news, stock_price],
     )
 
 
@@ -151,52 +161,56 @@ def main() -> None:
     print("Lesson 11 Exercise — Analytics Gateway")
     print("=" * 70)
 
-    gateway = LambdaGateway(name="analytics-gateway",
-                           description="Central registry for analytics tool backends")
+    gateway = LambdaGateway(
+        name="analytics-gateway",
+        description="Central registry for analytics tool backends",
+    )
 
-    # Register initial backends
     print("\n[1] Registering initial backends...")
-    gateway.register_target("weather_api", "Get current weather conditions for a city", WEATHER_LAMBDA)
-    gateway.register_target("currency_api", "Convert between currencies with live rates", CURRENCY_LAMBDA)
-    gateway.register_target("news_api", "Get latest news articles by category", NEWS_LAMBDA)
+    gateway.register_target(
+        "weather_lambda",
+        "Look up current weather conditions for a given city, including temperature, humidity, and wind.",
+        WEATHER_LAMBDA,
+    )
+    gateway.register_target(
+        "currency_lambda",
+        "Convert an amount between two currencies using live exchange rates.",
+        CURRENCY_LAMBDA,
+    )
+    gateway.register_target(
+        "news_api",
+        "Get the latest news headlines, optionally filtered by category.",
+        NEWS_LAMBDA,
+    )
     print(f"  Registered: {list(gateway.targets.keys())}")
 
-    # Build agent from registry
-    print("\n[2] Building analytics agent from gateway...")
-    agent = build_analytics_agent(gateway)
-    tools = gateway.discover_tools()
-    print(f"  Tools discovered: {[t['name'] for t in tools]}")
-
-    # Initial queries
     queries = [
-        ("Weather", "What is the weather in Tokyo?"),
-        ("Currency", "Convert 100 USD to EUR."),
-        ("News", "Show me the latest market news."),
+        "What is the weather in Tokyo?",
+        "Convert 500 USD to EUR.",
+        "What are the latest AI news headlines?",
     ]
 
-    for label, query in queries:
-        print(f"\n[3] Query ({label}): {query}")
-        response = str(agent(query))
-        print(f"  Output: {response[:250]}...")
+    for q in queries:
+        print(f"\n[2] Query: {q}")
+        response = run_agent_with_retry(build_analytics_agent, q)
+        print(f"  Output: {response[:250]}")
 
-    # Dynamic registration: add stock_price at runtime
-    print("\n[4] Dynamically registering stock_price_api...")
-    gateway.register_target("stock_price_api", "Get current stock price and change for a symbol", STOCK_PRICE_LAMBDA)
+    print("\n[3] Dynamically registering stock_price...")
+    gateway.register_target(
+        "stock_price",
+        "Get current stock price for any ticker symbol.",
+        STOCK_PRICE_LAMBDA,
+    )
     print(f"  Registered: {list(gateway.targets.keys())}")
 
-    # Rebuild agent so it discovers the new tool
-    agent = build_analytics_agent(gateway)
-    print(f"  Tools discovered: {[t['name'] for t in gateway.discover_tools()]}")
+    q = "What is the current stock price of AMZN?"
+    print(f"\n[4] Query (dynamic tool): {q}")
+    response = run_agent_with_retry(build_analytics_agent, q)
+    print(f"  Output: {response[:250]}")
 
-    # Query using the dynamically added tool
-    print("\n[5] Query (stock price, dynamic tool): What is the stock price of AAPL?")
-    response = str(agent("What is the stock price of AAPL?"))
-    print(f"  Output: {response[:250]}...")
-
-    # Invocation log
-    print("\n[6] Invocation log:")
+    print("\n[5] Invocation log:")
     for entry in gateway.invocation_log:
-        print(f"  {entry['tool']:20s} params={entry['params']}  status={entry['result_status']}")
+        print(f"  {entry['tool']:20s}  params={entry['params']}  status={entry['result_status']}")
 
     print("\n" + "=" * 70)
     print("Analytics gateway demo complete")
