@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Lesson 10 exercise - IAM role, S3 artifact bucket, and Bedrock compliance guardrail for VectraBank AgentCore Runtime
+
+Resources:
+  AgentCoreRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: lesson10-exercise-vectrabank-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      Policies:
+        - PolicyName: VectraBankRuntimePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                  - bedrock:Retrieve
+                  - bedrock:RetrieveAndGenerate
+                  - bedrock:ApplyGuardrail
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "arn:aws:logs:*:*:*"
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                Resource: "arn:aws:dynamodb:*:*:*"
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "lesson10-exercise-vectrabank-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  ComplianceGuardrail:
+    Type: AWS::Bedrock::Guardrail
+    Properties:
+      Name: lesson10-exercise-vectrabank-guardrail
+      Description: VectraBank financial compliance guardrail for AgentCore Runtime
+      BlockedInputMessaging: This request was blocked by the VectraBank compliance guardrail.
+      BlockedOutputsMessaging: This response was blocked by the VectraBank compliance guardrail.
+      ContentPolicyConfig:
+        FiltersConfig:
+          - Type: SEXUAL
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: VIOLENCE
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: HATE
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: INSULTS
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: MISCONDUCT
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: PROMPT_ATTACK
+            InputStrength: HIGH
+            OutputStrength: NONE
+      SensitiveInformationPolicyConfig:
+        PiiEntitiesConfig:
+          - Type: US_SOCIAL_SECURITY_NUMBER
+            Action: BLOCK
+          - Type: CREDIT_DEBIT_CARD_NUMBER
+            Action: BLOCK
+          - Type: US_BANK_ACCOUNT_NUMBER
+            Action: BLOCK
+          - Type: EMAIL
+            Action: BLOCK
+          - Type: PHONE
+            Action: BLOCK
+      TopicPolicyConfig:
+        TopicsConfig:
+          - Type: DENY
+            Name: InsiderTrading
+            Definition: Requests to trade on material non-public information or insider tips
+            Examples:
+              - I have insider info about an earnings announcement - should I trade?
+          - Type: DENY
+            Name: GuaranteedReturns
+            Definition: Promises or requests for risk-free guaranteed investment returns
+            Examples:
+              - How can I guarantee 50 percent returns with no risk?
+          - Type: DENY
+            Name: FinancialFraud
+            Definition: Requests to assist with financial fraud, money laundering, or deceptive practices
+            Examples:
+              - How can I hide transactions from regulators?
+      WordPolicyConfig:
+        ManagedWordListsConfig:
+          - Type: PROFANITY
+        WordsConfig:
+          - Text: bullshit
+            InputAction: BLOCK
+            OutputAction: BLOCK
+
+Outputs:
+  AgentCoreRoleArn:
+    Description: IAM role ARN for AgentCore Runtime
+    Value: !GetAtt AgentCoreRole.Arn
+    Export:
+      Name: lesson-10-exercise-AgentCoreRoleArn
+  ArtifactBucketName:
+    Description: S3 bucket name for deployment artifacts
+    Value: !Ref ArtifactBucket
+    Export:
+      Name: lesson-10-exercise-ArtifactBucketName
+  GuardrailId:
+    Description: Short guardrail ID for compliance guardrail
+    Value: !GetAtt ComplianceGuardrail.GuardrailId
+    Export:
+      Name: lesson-10-exercise-GuardrailId
+  GuardrailArn:
+    Value: !Ref ComplianceGuardrail
