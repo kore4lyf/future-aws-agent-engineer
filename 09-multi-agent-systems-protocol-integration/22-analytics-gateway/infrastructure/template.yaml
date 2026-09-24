@@ -1,0 +1,155 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Lesson 11 exercise - Lambda backends and IAM role for analytics AgentCore Gateway
+
+Resources:
+  AgentCoreRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: lesson11-exercise-analytics-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      Policies:
+        - PolicyName: AnalyticsGatewayPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "arn:aws:logs:*:*:*"
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: "*"
+
+  WeatherApi:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: lesson11-exercise-weather-api
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt AgentCoreRole.Arn
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import json
+          WEATHER = {
+              "new york": {"temp_c": 18, "condition": "Cloudy", "humidity": 65, "wind_kph": 12},
+              "london": {"temp_c": 12, "condition": "Rainy", "humidity": 82, "wind_kph": 18},
+              "tokyo": {"temp_c": 22, "condition": "Sunny", "humidity": 50, "wind_kph": 8},
+              "san francisco": {"temp_c": 16, "condition": "Foggy", "humidity": 75, "wind_kph": 15},
+          }
+          def handler(event, context):
+              params = event.get("parameters", event)
+              city = (params.get("city") or "").lower()
+              data = WEATHER.get(city)
+              if not data:
+                  return {"status": "success", "data": {"message": f"No data for {city}", "available": list(WEATHER.keys())}}
+              return {"status": "success", "data": {"city": city, **data}}
+
+  CurrencyApi:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: lesson11-exercise-currency-api
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt AgentCoreRole.Arn
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import json
+          RATES = {
+              "USD": 1.0, "EUR": 0.92, "GBP": 0.79, "JPY": 149.50,
+              "CAD": 1.36, "AUD": 1.52, "CHF": 0.88, "CNY": 7.24,
+          }
+          def handler(event, context):
+              params = event.get("parameters", event)
+              from_cur = (params.get("from_currency") or "USD").upper()
+              to_cur = (params.get("to_currency") or "EUR").upper()
+              amount = float(params.get("amount", 1))
+              from_rate = RATES.get(from_cur, 1.0)
+              to_rate = RATES.get(to_cur, 1.0)
+              converted = round(amount * (to_rate / from_rate), 2)
+              return {"status": "success", "data": {"from": from_cur, "to": to_cur, "amount": amount, "converted": converted, "rate": round(to_rate / from_rate, 4)}}
+
+  NewsApi:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: lesson11-exercise-news-api
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt AgentCoreRole.Arn
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import json
+          ARTICLES = [
+              {"id": "N-001", "title": "Fed signals rate hold through Q2", "category": "Markets", "timestamp": "2026-03-10T08:00:00Z"},
+              {"id": "N-002", "title": "Tech sector rally continues on AI earnings", "category": "Technology", "timestamp": "2026-03-10T12:00:00Z"},
+              {"id": "N-003", "title": "Oil prices steady amid OPEC+ discussions", "category": "Commodities", "timestamp": "2026-03-09T16:00:00Z"},
+              {"id": "N-004", "title": "European markets close higher on banking gains", "category": "Markets", "timestamp": "2026-03-10T17:00:00Z"},
+          ]
+          def handler(event, context):
+              params = event.get("parameters", event)
+              category = (params.get("category") or "").lower()
+              results = ARTICLES
+              if category:
+                  results = [a for a in ARTICLES if category in a["category"].lower()]
+              return {"status": "success", "data": {"articles": results, "count": len(results)}}
+
+  StockPriceApi:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: lesson11-exercise-stock-price-api
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt AgentCoreRole.Arn
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import json
+          STOCKS = {
+              "AAPL": {"price": 185.92, "change_pct": 1.2, "volume": "52M"},
+              "MSFT": {"price": 412.30, "change_pct": -0.4, "volume": "28M"},
+              "GOOGL": {"price": 174.55, "change_pct": 0.8, "volume": "31M"},
+              "AMZN": {"price": 203.15, "change_pct": 1.5, "volume": "45M"},
+          }
+          def handler(event, context):
+              params = event.get("parameters", event)
+              symbol = (params.get("symbol") or "").upper()
+              data = STOCKS.get(symbol)
+              if not data:
+                  return {"status": "success", "data": {"message": f"No data for {symbol}", "available": list(STOCKS.keys())}}
+              return {"status": "success", "data": {"symbol": symbol, **data}}
+
+Outputs:
+  AgentCoreRoleArn:
+    Description: IAM role ARN for AgentCore Gateway
+    Value: !GetAtt AgentCoreRole.Arn
+    Export:
+      Name: lesson-11-exercise-AgentCoreRoleArn
+  WeatherLambdaArn:
+    Value: !GetAtt WeatherApi.Arn
+  CurrencyLambdaArn:
+    Value: !GetAtt CurrencyApi.Arn
+  NewsLambdaArn:
+    Value: !GetAtt NewsApi.Arn
+  StockPriceLambdaArn:
+    Value: !GetAtt StockPriceApi.Arn
