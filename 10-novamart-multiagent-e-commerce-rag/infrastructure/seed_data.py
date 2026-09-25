@@ -21,7 +21,7 @@ import sys
 from datetime import datetime, timedelta
 
 AWS_REGION   = os.environ.get('AWS_REGION', 'us-east-1')
-PROJECT_NAME = os.environ.get('PROJECT_NAME', 'udacity-agentcore')
+PROJECT_NAME = os.environ.get('PROJECT_NAME', 'novamart-agentcore')
 
 dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
 s3       = boto3.client('s3', region_name=AWS_REGION)

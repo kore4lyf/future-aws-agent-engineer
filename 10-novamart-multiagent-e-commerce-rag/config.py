@@ -26,7 +26,7 @@ load_dotenv()
 # REGION & PROJECT SETTINGS
 # ─────────────────────────────────────────────
 AWS_REGION   = os.environ.get('AWS_REGION', 'us-east-1')
-PROJECT_NAME = os.environ.get('PROJECT_NAME', 'udacity-agentcore')
+PROJECT_NAME = os.environ.get('PROJECT_NAME', 'novamart-agentcore')
 
 # ─────────────────────────────────────────────
 # FOUNDATION MODELS
@@ -192,11 +192,11 @@ AGENTCORE_RUNTIME_ARN = os.environ.get('AGENTCORE_RUNTIME_ARN', '')
 # Task 3: AgentCore CLI project (agentcore/agentcore.json) - the CLI names the
 # deployed runtime "<project name>_<agent name>". Keep these in sync with the
 # "name" fields in agentcore/agentcore.json.
-AGENTCORE_PROJECT_NAME = 'udacity'             # agentcore.json  -> "name"
+AGENTCORE_PROJECT_NAME = 'novamart'             # agentcore.json  -> "name"
 AGENTCORE_AGENT_NAME   = 'agentcore_runtime'   # agentcore.json  -> runtimes[0].name
 
 # Task 3: AgentCore Runtime name as created by the CLI (underscores - AgentCore
-# does not allow hyphens) -> udacity_agentcore_runtime
+# does not allow hyphens) -> novamart_agentcore_runtime
 AGENTCORE_RUNTIME_NAME = f"{AGENTCORE_PROJECT_NAME}_{AGENTCORE_AGENT_NAME}"
 
 # CloudFormation stack the CLI deploys the runtime with (AgentCore-<project>-<target>)

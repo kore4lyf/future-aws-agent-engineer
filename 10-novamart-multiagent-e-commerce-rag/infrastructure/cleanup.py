@@ -7,7 +7,7 @@ dependency order, so the account is back to its pre-project state:
   1. Bedrock Knowledge Bases (+ data sources) and the service roles/policies the
      console wizard created for them  (AmazonBedrockExecutionRoleForKnowledgeBase_*)
   2. The AgentCore CLI stack that holds the AgentCore Runtime
-     (AgentCore-udacity-default, created by `agentcore deploy`), Memory,
+     (AgentCore-novamart-default, created by `agentcore deploy`), Memory,
      workload identity (and the optional Gateway). The shared CDK bootstrap
      stack (CDKToolkit) is left in place.
   3. Bedrock Guardrail (all versions)
@@ -43,7 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config  # noqa: E402
 
 REGION  = config.AWS_REGION
-PREFIX  = config.PROJECT_NAME                     # udacity-agentcore
+PREFIX  = config.PROJECT_NAME                     # novamart-agentcore
 KB_NAME_PREFIX = 'novamart-'                      # novamart-returns-policy-kb, ...
 TS_POLICY_NAME = 'NovaMartTransactionSearchXRayAccess'
 

@@ -57,7 +57,7 @@ The project includes a CloudFormation stack that provisions the AWS resources yo
 
 The stack (`infrastructure/starter_stack.yaml`) creates:
 
-- DynamoDB tables: `udacity-agentcore-orders`, `udacity-agentcore-customers`, `udacity-agentcore-workflow-state`
+- DynamoDB tables: `novamart-agentcore-orders`, `novamart-agentcore-customers`, `novamart-agentcore-workflow-state`
 - S3 bucket: for policy documents. The AgentCore CLI stores its deployment package in the CDK bootstrap assets bucket, created on the first runtime deployment.
 - S3 Vectors: a vector bucket with three vector indexes (`returns-policy-index`, `shipping-policy-index`, `warranty-policy-index`) — the backing store for the three Knowledge Bases
 - IAM role: Execution role for the AgentCore Runtime with permissions for Bedrock, Knowledge Bases, DynamoDB, S3, S3 Vectors, CloudFormation, CloudWatch, and X-Ray
@@ -69,7 +69,7 @@ The stack (`infrastructure/starter_stack.yaml`) creates:
 
 1. Navigate to AWS Console → CloudFormation → Create stack → With new resources (standard)
 2. Select Upload a template file → choose `infrastructure/starter_stack.yaml` → Next
-3. Stack name: `udacity-agentcore` → Next
+3. Stack name: `novamart-agentcore` → Next
 4. Leave stack options as defaults → Next
 5. On the review page, check "I acknowledge that AWS CloudFormation might create IAM resources with custom names"
 6. Click Submit
@@ -82,7 +82,7 @@ Open AWS Console → CloudShell (bottom-left icon), upload the template file, th
 ```bash
 aws cloudformation deploy \
   --template-file starter_stack.yaml \
-  --stack-name udacity-agentcore \
+  --stack-name novamart-agentcore \
   --capabilities CAPABILITY_NAMED_IAM \
   --region us-east-1
 ```
@@ -93,7 +93,7 @@ Wait for the stack to finish deploying. If using CloudShell, you can check the s
 
 ```bash
 aws cloudformation describe-stacks \
-  --stack-name udacity-agentcore \
+  --stack-name novamart-agentcore \
   --query "Stacks[0].StackStatus" \
   --region us-east-1
 ```
@@ -470,7 +470,7 @@ The policy documents were uploaded to S3 when you ran `seed_data.py` during envi
 You can verify in the AWS Console:
 
 1. Navigate to AWS Console → S3
-2. Open the bucket named `udacity-agentcore-policy-docs-{ACCOUNT_ID}-{suffix}` (the exact name is the Policy Bucket line of `python config.py`)
+2. Open the bucket named `novamart-agentcore-policy-docs-{ACCOUNT_ID}-{suffix}` (the exact name is the Policy Bucket line of `python config.py`)
 3. Navigate to the `policies/` prefix
 4. Verify you see three folders: `returns/`, `shipping/`, `warranty/`, each containing policy documents
 
@@ -492,7 +492,7 @@ Create three KBs with these settings (one per domain):
 | S3 data source prefix | `policies/returns/` | `policies/shipping/` | `policies/warranty/` |
 | Embedding model | Amazon Titan Embed Text v2 | Amazon Titan Embed Text v2 | Amazon Titan Embed Text v2 |
 | Vector store | S3 Vectors → Use an existing vector bucket | same | same |
-| S3 Vectors bucket | Vector Bucket from `python config.py` (`udacity-agentcore-vectors-…`) | same | same |
+| S3 Vectors bucket | Vector Bucket from `python config.py` (`novamart-agentcore-vectors-…`) | same | same |
 | Vector index | `returns-policy-index` | `shipping-policy-index` | `warranty-policy-index` |
 
 **Do not choose Managed KB** — that creates a different vector bucket than the one the project (and the rubric) expects, and the backing store cannot be changed afterwards. Use Self-managed KBs.

@@ -249,7 +249,7 @@ python tests/test_agent.py task2
   - Your part:
     1. build the runtime environment variables dict (region, project name, KB IDs, log group, `GUARDRAIL_ID`, `GUARDRAIL_VERSION`)
     2. `agentcore_cli.configure_runtime(env_vars=..., network_mode='PUBLIC', protocol='HTTP', execution_role_arn=config.AGENTCORE_ROLE_ARN)` - writes those settings into `agentcore/agentcore.json`
-    3. `agentcore_cli.deploy()` - runs `agentcore deploy -y`: the CLI packages `build/runtime/` with arm64 dependencies (*direct code deployment*, `build: CodeZip`) and creates or updates the runtime through a CDK stack (`AgentCore-udacity-default`)
+    3. `agentcore_cli.deploy()` - runs `agentcore deploy -y`: the CLI packages `build/runtime/` with arm64 dependencies (*direct code deployment*, `build: CodeZip`) and creates or updates the runtime through a CDK stack (`AgentCore-novamart-default`)
     4. `agentcore_cli.deployed_runtime_arn()` - the ARN the CLI recorded in `agentcore/.cli/deployed-state.json`
   - **How the guardrail is attached:** the runtime has no guardrail parameter. Guardrails are enforced per model call, so the pre-written `_apply_guardrail()` sets `guardrail_id` / `guardrail_version` on every agent's `BedrockModel` whenever `GUARDRAIL_ID` and `GUARDRAIL_VERSION` are known - from `.env` locally, from the runtime environment variables you declare when deployed
 
@@ -328,7 +328,7 @@ python tests/test_agent.py task5
 **File:** `src/agent_orchestrator.py`
 
 - **`configure_observability(runtime_arn)`** - Enable logging and tracing by building a `loggingConfiguration` and handing it to the pre-written `apply_observability_config()` (wrapped in `try/except`):
-  - **CloudWatch:** `cloudWatchConfig` - INFO-level logs to `config.AGENT_LOG_GROUP` (`/aws/bedrock/agentcore/udacity-agentcore`), `enabled=True`
+  - **CloudWatch:** `cloudWatchConfig` - INFO-level logs to `config.AGENT_LOG_GROUP` (`/aws/bedrock/agentcore/novamart-agentcore`), `enabled=True`
   - **X-Ray:** `xRayConfig` - `enabled=True`, `samplingRate=1.0` (100% in dev, reduce to 5% in prod)
   - `apply_observability_config()` turns that into real AWS state: it enables CloudWatch **Transaction Search** (the mechanism AgentCore Observability uses) at the given sampling percentage, creates the log group, and stores the settings as environment variables on your AgentCore Runtime so the deployed agent logs and traces exactly as configured
 
@@ -389,7 +389,7 @@ python infrastructure/cleanup.py          # dry run - lists what would be delete
 python infrastructure/cleanup.py --yes    # deletes it
 ```
 
-The script deletes, in dependency order: the three Knowledge Bases (with their data sources and the service roles the console created for them), the AgentCore CLI stack that holds the AgentCore Runtime (`AgentCore-udacity-default`) and the Memory, the Guardrail, the contents of the policy bucket, the CloudFormation stack (DynamoDB tables, buckets, S3 Vectors bucket and indexes, execution role, log group) and the runtime log groups. Deletions of Knowledge Bases and AgentCore resources are asynchronous - run it a second time to confirm nothing is left. Add `--disable-transaction-search` if you also want to switch CloudWatch Transaction Search back off.
+The script deletes, in dependency order: the three Knowledge Bases (with their data sources and the service roles the console created for them), the AgentCore CLI stack that holds the AgentCore Runtime (`AgentCore-novamart-default`) and the Memory, the Guardrail, the contents of the policy bucket, the CloudFormation stack (DynamoDB tables, buckets, S3 Vectors bucket and indexes, execution role, log group) and the runtime log groups. Deletions of Knowledge Bases and AgentCore resources are asynchronous - run it a second time to confirm nothing is left. Add `--disable-transaction-search` if you also want to switch CloudWatch Transaction Search back off.
 
 > Do this **after** submitting: the reviewer needs your screenshots, but nothing in the reviewed submission depends on the resources still existing.
 
@@ -448,7 +448,7 @@ The `chat` command opens a conversation loop where you type queries and watch th
 
 The foundation infrastructure is defined in `infrastructure/starter_stack.yaml` and provisions DynamoDB tables, the S3 policy-documents bucket, an S3 Vectors bucket with three vector indexes, the AgentCore execution role, and the CloudWatch log group.
 
-> Deploy it once (stack name `udacity-agentcore`, region `us-east-1`, with `CAPABILITY_NAMED_IAM`) before starting, as described in the project's *Environment Setup* page, then run `python infrastructure/seed_data.py`. The AI layer is built on top via code; the stack itself is never modified.
+> Deploy it once (stack name `novamart-agentcore`, region `us-east-1`, with `CAPABILITY_NAMED_IAM`) before starting, as described in the project's *Environment Setup* page, then run `python infrastructure/seed_data.py`. The AI layer is built on top via code; the stack itself is never modified.
 
 ---
 
@@ -536,7 +536,7 @@ The `.env` file holds values that are populated progressively as each task is co
 ```bash
 # AWS Settings
 AWS_REGION=us-east-1
-PROJECT_NAME=udacity-agentcore
+PROJECT_NAME=novamart-agentcore
 
 # Most AWS resource names/ARNs (DynamoDB tables, S3 buckets, IAM role, log group)
 # are loaded automatically from CloudFormation exports - no entries needed here.
@@ -567,7 +567,7 @@ python config.py
 
 | Variable | Where it comes from | What to do if missing |
 |---|---|---|
-| DynamoDB tables, S3 + S3 Vectors buckets, IAM role, log group | CloudFormation exports only - no `.env` fallback | Verify stack `udacity-agentcore` is `CREATE_COMPLETE` in `us-east-1` (redeploy the stack if it predates the S3 Vectors resources) |
+| DynamoDB tables, S3 + S3 Vectors buckets, IAM role, log group | CloudFormation exports only - no `.env` fallback | Verify stack `novamart-agentcore` is `CREATE_COMPLETE` in `us-east-1` (redeploy the stack if it predates the S3 Vectors resources) |
 | `RETURNS_KB_ID`, `SHIPPING_KB_ID`, `WARRANTY_KB_ID` | `.env` file (student path) | Complete Task 5 - create KBs in AWS Console, then paste IDs into `.env` |
 | `AGENTCORE_RUNTIME_ARN` | `.env` file only | Complete Task 3 - run `python src/agent_orchestrator.py deploy`, then paste the output ARN into `.env` |
 | `GUARDRAIL_ID`, `GUARDRAIL_VERSION` | `.env` file (student path) | Complete Task 3 - the deploy command prints these values; paste them into `.env` |
@@ -593,7 +593,7 @@ Install Node.js 20+ and run `npm install -g @aws/agentcore@0.30.0` (see Prerequi
 The CLI runs `uv pip install --python-version 3.12 --python-platform aarch64-manylinux2014 --only-binary :all:` against `build/runtime/pyproject.toml`. It needs [`uv`](https://docs.astral.sh/uv/getting-started/installation/) on your PATH and internet access. Run `python src/agentcore_cli.py` to check what the wrapper sees, and read `agentcore/.cli/logs/` for the CLI's own log.
 
 **`agentcore deploy` fails with a CDK / CloudFormation error?**
-The first deploy bootstraps CDK (`CDKToolkit` stack) - make sure your credentials may create CloudFormation stacks and IAM roles. Check the stack `AgentCore-udacity-default` in **AWS Console → CloudFormation** for the failing resource, fix the cause and re-run `python src/agent_orchestrator.py deploy` (or `agentcore deploy -y`). `agentcore status` shows what is deployed.
+The first deploy bootstraps CDK (`CDKToolkit` stack) - make sure your credentials may create CloudFormation stacks and IAM roles. Check the stack `AgentCore-novamart-default` in **AWS Console → CloudFormation** for the failing resource, fix the cause and re-run `python src/agent_orchestrator.py deploy` (or `agentcore deploy -y`). `agentcore status` shows what is deployed.
 
 ---
 
