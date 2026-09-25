@@ -341,7 +341,7 @@ def upload_policy_documents(bucket: str):
 
 if __name__ == '__main__':
     print("=" * 50)
-    print("Udacity AgentCore Project - Data Seeding")
+    print("Novamart AgentCore Project - Data Seeding")
     print("=" * 50)
 
     policy_bucket = _policy_bucket()
