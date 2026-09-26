@@ -9,9 +9,9 @@ A multi agent AI customer support system for NovaMart that automatically underst
 
 | # | Feature | Phase | Status |
 |---|---------|-------|--------|
-| 1 | Foundation deployment | Setup | in-progress (verified) |
-| 2 | Multi-agent graph | Phase 1 | in-progress |
-| 3 | Bedrock Guardrail | Phase 2 | planned |
+| 1 | Foundation deployment | Setup | done |
+| 2 | Multi-agent graph | Phase 1 | done |
+| 3 | Bedrock Guardrail | Phase 2 | in-progress |
 | 4 | AgentCore Runtime deployment | Phase 2 | planned |
 | 5 | AgentCore Memory | Phase 2 | planned |
 | 6 | Bedrock Knowledge Bases | Phase 3 | planned |
@@ -45,22 +45,23 @@ Build the five Strands Agents in `src/agent_orchestrator.py` that form the Orche
    - [x] CommunicationAgent: one tool with Pydantic schema, composes empathetic response
    - [x] OrchestratorAgent: five routing tools with Pydantic schemas, WorkflowState management
    - code in `src/agents/`
-- [ ] Verify it: `/check verify multi-agent graph`
-- [ ] Test it: `/test multi-agent graph`
-- [ ] Review it: `/check review multi-agent graph`
-- [ ] Document it: `/document multi-agent graph`
+- [x] Verify it: `/check verify multi-agent graph`
+- [x] Test it: `/test multi-agent graph`
+- [x] Review it: `/check review multi-agent graph`
+- [x] Document it: `/document multi-agent graph`
 
 ## Phase 2: Deployment
 
 ### 3. Bedrock Guardrail · Full
 Create a Bedrock Guardrail in `src/agent_orchestrator.py` with content, PII, topic, and word policies, then publish a numbered version.
 **Done when:** `create_guardrail()` returns `(guardrail_id, guardrail_version)` and the guardrail correctly blocks or anonymizes test inputs.
-- [ ] Build it: `/develop bedrock guardrail`
-   - [ ] Content policy: SEXUAL, VIOLENCE, HATE at HIGH strength; INSULTS, MISCONDUCT at MEDIUM
-   - [ ] PII policy: BLOCK credit card numbers and SSNs; ANONYMIZE emails and phone numbers
-   - [ ] Topic policy: DENY competitor products, pricing negotiations, legal threats
-   - [ ] Word policy: enable managed profanity list
-   - [ ] Publish numbered version via `create_guardrail_version()`
+- [x] Build it: `/develop bedrock guardrail`
+   - [x] Content policy: SEXUAL, VIOLENCE, HATE at HIGH strength; INSULTS, MISCONDUCT at MEDIUM
+   - [x] PII policy: BLOCK credit card numbers and SSNs; ANONYMIZE emails and phone numbers
+   - [x] Topic policy: DENY competitor products, pricing negotiations, legal threats
+   - [x] Word policy: enable managed profanity list
+   - [x] Publish numbered version via `create_guardrail_version()`
+   - code in `src/agent_orchestrator.py`
 - [ ] Verify it: `/check verify bedrock guardrail`
 - [ ] Test it: `/test bedrock guardrail`
 - [ ] Review it: `/check review bedrock guardrail`
