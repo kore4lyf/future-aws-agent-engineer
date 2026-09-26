@@ -14,7 +14,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
-from agent_observability import apply_observability_config
+from agent_observability import apply_observability_config, ENV_LOG_GROUP, ENV_LOG_LEVEL, ENV_LOG_TO_CLOUDWATCH, ENV_TRACING_ENABLED, ENV_SAMPLING_RATE
 
 
 __all__ = ['configure_observability']
@@ -34,15 +34,22 @@ def configure_observability(runtime_arn: str) -> None:
                           sampling percentage; runtime env AGENT_TRACING_ENABLED /
                           AGENT_TRACE_SAMPLING_RATE
     """
-    # TODO: Build the logging configuration
-    # logging_configuration = {
-    #     'cloudWatchConfig': {'logGroupName': config.AGENT_LOG_GROUP,
-    #                          'logLevel': 'INFO', 'enabled': True},
-    #     'xRayConfig':       {'enabled': True, 'samplingRate': 1.0},
-    # }
-    # Then apply it:  summary = apply_observability_config(runtime_arn, logging_configuration)
-    # Wrap the call in try/except - on success print the CloudWatch log group
-    # and the X-Ray sampling rate; on exception print
-    #   "[Note] Observability configuration failed: <e>"
+    logging_configuration = {
+        'cloudWatchConfig': {
+            'logGroupName': config.AGENT_LOG_GROUP,
+            'logLevel': 'INFO',
+            'enabled': True,
+        },
+        'xRayConfig': {
+            'enabled': True,
+            'samplingRate': 1.0,
+        },
+    }
 
-    pass
+    try:
+        summary = apply_observability_config(runtime_arn, logging_configuration)
+        cw = summary.get('runtime_env', {})
+        print(f"  CloudWatch: {cw.get(ENV_LOG_GROUP, config.AGENT_LOG_GROUP)} [{cw.get(ENV_LOG_LEVEL, 'INFO')}]")
+        print(f"  X-Ray: enabled, samplingRate={cw.get(ENV_SAMPLING_RATE, '1.0')}")
+    except Exception as e:
+        print(f"[Note] Observability configuration failed: {e}")

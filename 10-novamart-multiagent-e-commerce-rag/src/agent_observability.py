@@ -693,7 +693,7 @@ def apply_observability_config(runtime_arn: str, logging_configuration: dict) ->
         ENV_TRACING_ENABLED:   'true' if xr['enabled'] else 'false',
         ENV_SAMPLING_RATE:     str(float(xr['samplingRate'])),
     })
-    agentcore_cli.configure_runtime(env_vars=env)
+    agentcore_cli.configure_runtime(env_vars=env, execution_role_arn=config.AGENTCORE_ROLE_ARN)
     print("  Runtime environment written to agentcore/agentcore.json - applying with the AgentCore CLI")
     agentcore_cli.deploy()
     print("  Waiting for runtime status READY", end='', flush=True)
