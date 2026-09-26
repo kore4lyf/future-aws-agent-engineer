@@ -1,6 +1,6 @@
 """
 agents/policy/tools.py
-=======================
+======================
 Retriever sub-agent builders for the Policy Agent.
 
 The retriever agents are created here and imported by build_policy_agent()
@@ -20,26 +20,30 @@ from strands.models import BedrockModel
 
 import config
 from bedrock_kb_retrieval import retrieve_from_knowledge_base, format_kb_results
+from agents.policy.schema import RetrievePolicyInput
 
 
 @tool
 def retrieve_returns_policy(query: str) -> str:
     """Retrieve relevant passages from the Returns Policy knowledge base."""
-    results = retrieve_from_knowledge_base(config.RETURNS_KB_ID, query)
+    input_data = RetrievePolicyInput(query=query)
+    results = retrieve_from_knowledge_base(config.RETURNS_KB_ID, input_data.query)
     return format_kb_results(results)
 
 
 @tool
 def retrieve_shipping_policy(query: str) -> str:
     """Retrieve relevant passages from the Shipping Policy knowledge base."""
-    results = retrieve_from_knowledge_base(config.SHIPPING_KB_ID, query)
+    input_data = RetrievePolicyInput(query=query)
+    results = retrieve_from_knowledge_base(config.SHIPPING_KB_ID, input_data.query)
     return format_kb_results(results)
 
 
 @tool
 def retrieve_warranty_policy(query: str) -> str:
     """Retrieve relevant passages from the Warranty Policy knowledge base."""
-    results = retrieve_from_knowledge_base(config.WARRANTY_KB_ID, query)
+    input_data = RetrievePolicyInput(query=query)
+    results = retrieve_from_knowledge_base(config.WARRANTY_KB_ID, input_data.query)
     return format_kb_results(results)
 
 

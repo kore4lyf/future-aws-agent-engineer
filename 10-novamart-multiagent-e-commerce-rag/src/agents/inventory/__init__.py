@@ -19,6 +19,9 @@ import config
 from agents.inventory.tools import check_order_status, get_customer_tier, list_customer_orders
 
 
+__all__ = ['build_inventory_agent']
+
+
 def build_inventory_agent() -> Agent:
     """
     Build the Inventory Agent.

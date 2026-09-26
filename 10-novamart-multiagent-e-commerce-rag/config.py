@@ -1,7 +1,7 @@
 """
 config.py
 =========
-Central configuration for the Udacity AgentCore project.
+Central configuration for the Novamart AgentCore project.
 Reads resource names and ARNs from CloudFormation stack exports to avoid
 hard-coded AWS resource identifiers.
 
@@ -231,7 +231,7 @@ def print_config():
             return f"ERROR: {exc}"
 
     print("\n" + "="*60)
-    print("  Udacity AgentCore Project Configuration")
+    print("  Novamart AgentCore Project Configuration")
     print("="*60)
     _display("Region:",              AWS_REGION)
     _display("Account ID:",          _resolve('ACCOUNT_ID'))

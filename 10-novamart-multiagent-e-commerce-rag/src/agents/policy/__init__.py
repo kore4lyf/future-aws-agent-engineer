@@ -1,6 +1,6 @@
 """
 agents/policy/__init__.py
-==========================
+=========================
 Policy Agent — multi-agent RAG coordinator.
 Runs 3 specialized retriever sub-agents in parallel via ThreadPoolExecutor,
 then synthesizes the combined results.
@@ -19,7 +19,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import config
 from agents.policy.tools import _build_retrievers
+from agents.policy.schema import SearchAllPoliciesOutput
 from agent_orchestrator import trace
+
+__all__ = ['build_policy_agent']
 
 
 def build_policy_agent() -> Agent:
@@ -76,10 +79,16 @@ def build_policy_agent() -> Agent:
         for domain in ['Returns', 'Shipping', 'Warranty']:
             trace.kb_result(domain, results.get(domain, '[No results]'))
 
-        return "\n\n".join(
-            f"[{domain} Policy]\n{results.get(domain, 'No results')}"
-            for domain in ['Returns', 'Shipping', 'Warranty']
+        output = SearchAllPoliciesOutput(
+            returns=str(results.get('Returns', '')),
+            shipping=str(results.get('Shipping', '')),
+            warranty=str(results.get('Warranty', '')),
+            synthesis="\n\n".join(
+                f"[{domain} Policy]\n{results.get(domain, 'No results')}"
+                for domain in ['Returns', 'Shipping', 'Warranty']
+            ),
         )
+        return output.synthesis
 
     model = BedrockModel(
         model_id=config.WORKER_MODEL_ID,
@@ -101,4 +110,3 @@ Communication Agent can include them in the final customer response."""
         system_prompt=system_prompt,
         tools=[search_all_policies],
     )
-

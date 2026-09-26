@@ -19,6 +19,9 @@ import config
 from agents.communication.tools import get_full_workflow_context
 
 
+__all__ = ['build_communication_agent']
+
+
 def build_communication_agent() -> Agent:
     """
     Build the Communication Agent.

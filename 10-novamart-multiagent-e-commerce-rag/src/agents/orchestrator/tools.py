@@ -1,6 +1,6 @@
 """
 agents/orchestrator/tools.py
-==============================
+=============================
 Tool factories for the Orchestrator Agent.
 
 Routing tools need closure over the worker agents, so they are created
@@ -19,6 +19,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
 from strands import tool
 
 from agent_orchestrator import _read_workflow_state, _update_workflow_state, trace
+from agents.orchestrator.schema import (
+    InitializeSessionInput,
+    InitializeSessionOutput,
+    RouteToCommunicationAgentInput,
+    RouteToInventoryAgentInput,
+    RouteToPolicyAgentInput,
+    RouteToRefundAgentInput,
+)
 
 
 def make_initialize_session():
@@ -35,12 +43,25 @@ def make_initialize_session():
         Returns:
             Confirmation that the session was initialized
         """
+        input_data = InitializeSessionInput(session_id=session_id, customer_id=customer_id)
         from agent_orchestrator import _create_workflow_state
         try:
-            state = _create_workflow_state(session_id, customer_id)
-            return f"Session initialized: {session_id} for customer {customer_id} (version {state['version']})"
+            state = _create_workflow_state(input_data.session_id, input_data.customer_id)
+            output = InitializeSessionOutput(
+                session_id=input_data.session_id,
+                customer_id=input_data.customer_id,
+                version=state['version'],
+                message=f"Session initialized: {input_data.session_id} for customer {input_data.customer_id} (version {state['version']})",
+            )
+            return output.model_dump_json()
         except Exception as exc:
-            return f"Session initialization note: {exc}"
+            output = InitializeSessionOutput(
+                session_id=input_data.session_id,
+                customer_id=input_data.customer_id,
+                version=0,
+                message=f"Session initialization note: {exc}",
+            )
+            return output.model_dump_json()
     return initialize_session
 
 
@@ -59,6 +80,7 @@ def make_route_to_inventory_agent(get_inventory_agent):
         Returns:
             Inventory facts retrieved by the InventoryAgent
         """
+        _ = RouteToInventoryAgentInput(session_id=session_id, customer_id=customer_id, request=request)
         trace.step_start('inventory_agent')
         trace.agent_section('INVENTORY AGENT')
         state = _read_workflow_state(session_id)
@@ -85,6 +107,7 @@ def make_route_to_policy_agent(get_policy_agent):
         Returns:
             Policy information retrieved and synthesized by PolicyAgent
         """
+        _ = RouteToPolicyAgentInput(session_id=session_id, request=request)
         trace.step_start('policy_agent')
         trace.agent_section('POLICY AGENT')
         state = _read_workflow_state(session_id)
@@ -112,6 +135,7 @@ def make_route_to_refund_agent(get_refund_agent):
         Returns:
             Refund decision from the RefundAgent
         """
+        _ = RouteToRefundAgentInput(session_id=session_id, customer_id=customer_id, request=request)
         trace.step_start('refund_agent')
         trace.agent_section('REFUND AGENT')
         state = _read_workflow_state(session_id)
@@ -140,6 +164,11 @@ def make_route_to_communication_agent(get_communication_agent):
         Returns:
             Final customer-facing response drafted by CommunicationAgent
         """
+        _ = RouteToCommunicationAgentInput(
+            session_id=session_id,
+            customer_id=customer_id,
+            original_request=original_request,
+        )
         trace.step_start('communication_agent')
         trace.agent_section('COMMUNICATION AGENT')
         state = _read_workflow_state(session_id)

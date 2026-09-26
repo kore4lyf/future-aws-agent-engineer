@@ -12,8 +12,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
 
 from strands import tool
+from pydantic import ValidationError
+from botocore.exceptions import ClientError
 
 from agent_orchestrator import _read_workflow_state
+from agents.communication.schema import (
+    GetFullWorkflowContextInput,
+    GetFullWorkflowContextOutput,
+)
 
 
 @tool
@@ -27,7 +33,17 @@ def get_full_workflow_context(session_id: str) -> dict:
     Returns:
         Full WorkflowState dict (inventory_agent, policy_agent, refund_agent)
     """
-    state = _read_workflow_state(session_id)
-    if not state:
-        return {'error': 'WorkflowState not found for this session.'}
-    return {k: state.get(k) for k in state if k not in ('session_id', 'customer_id', 'version', 'ttl', 'created_at')}
+    input_data = GetFullWorkflowContextInput(session_id=session_id)
+    try:
+        state = _read_workflow_state(input_data.session_id)
+        if not state:
+            output = GetFullWorkflowContextOutput(error='WorkflowState not found for this session.')
+            return output.model_dump()
+        output = GetFullWorkflowContextOutput(
+            inventory_agent=state.get('inventory_agent'),
+            policy_agent=state.get('policy_agent'),
+            refund_agent=state.get('refund_agent'),
+        )
+        return output.model_dump()
+    except (ClientError, ValidationError) as exc:
+        return GetFullWorkflowContextOutput(error=str(exc)).model_dump()

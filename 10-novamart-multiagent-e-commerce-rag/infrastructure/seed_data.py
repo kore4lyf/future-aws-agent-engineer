@@ -308,7 +308,7 @@ def seed_customers():
     print("Seeding customers table...")
     for customer in CUSTOMERS:
         table.put_item(Item=customer)
-    print(f"  ✓ Inserted {len(CUSTOMERS)} customers")
+    print(f"  [OK] Inserted {len(CUSTOMERS)} customers")
 
 
 def seed_orders():
@@ -317,7 +317,7 @@ def seed_orders():
     orders = generate_orders()
     for order in orders:
         table.put_item(Item=order)
-    print(f"  ✓ Inserted {len(orders)} orders")
+    print(f"  [OK] Inserted {len(orders)} orders")
     for o in orders:
         print(f"    {o['customer_id']}  {o['order_id']}  {o['status']:<12} "
               f"{o['order_date']}  {o['product_name']}")
@@ -336,7 +336,7 @@ def upload_policy_documents(bucket: str):
                 'last_updated': '2025-01'
             }
         )
-        print(f"  ✓ Uploaded policies/{filename}")
+        print(f"  [OK] Uploaded policies/{filename}")
 
 
 if __name__ == '__main__':
@@ -350,7 +350,7 @@ if __name__ == '__main__':
     seed_orders()
     upload_policy_documents(policy_bucket)
 
-    print("\n✅ Seeding complete!")
+    print("\n[OK] Seeding complete!")
     print("\nResource names:")
     print(f"  Orders Table:    {PROJECT_NAME}-orders")
     print(f"  Customers Table: {PROJECT_NAME}-customers")

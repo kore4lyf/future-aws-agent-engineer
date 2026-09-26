@@ -19,6 +19,9 @@ import config
 from agents.refund.tools import get_inventory_context, initiate_refund
 
 
+__all__ = ['build_refund_agent']
+
+
 def build_refund_agent() -> Agent:
     """
     Build the Refund Agent.
