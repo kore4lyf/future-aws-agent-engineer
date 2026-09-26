@@ -23,8 +23,35 @@ python config.py
 # Run tests
 python tests/test_agent.py task2
 
+# Run guardrail tests
+python tests/test_agent.py task3
+
 # Deploy
 python src/agent_orchestrator.py deploy
+```
+
+## Project structure
+
+```
+src/
+├── agent_orchestrator.py   # Thin facade: re-exports + CLI dispatch
+├── agents/                 # Modular agent graph (inventory, refund, policy, communication, orchestrator)
+├── workflow/
+│   ├── state.py            # WorkflowState helpers + trace singleton
+│   └── graph.py            # build_agent_graph, _apply_guardrail
+├── deploy/
+│   ├── guardrail.py        # create_guardrail
+│   ├── runtime.py          # deploy_to_agentcore_runtime
+│   ├── memory.py           # configure_memory
+│   ├── observability.py    # configure_observability
+│   └── gateway.py          # deploy_agentcore_gateway
+├── serving/
+│   ├── invoke.py           # invoke_agent
+│   └── serve.py            # run_serve
+└── cli/
+    ├── main.py             # deploy_all + argv dispatch
+    ├── scenarios.py        # TEST_CASES + run_test_scenarios
+    └── chat.py             # TEST_CUSTOMERS + run_chat + run_invoke
 ```
 
 ## Specs

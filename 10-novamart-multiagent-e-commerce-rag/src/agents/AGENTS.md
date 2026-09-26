@@ -8,6 +8,7 @@ The NovaMart multi-agent graph. Each agent is a self-contained module with a bui
 
 | File | Owns |
 |---|---|
+| `src/agent_orchestrator.py` | Thin facade: re-exports all public names, CLI dispatch |
 | `src/agents/__init__.py` | Public API re-exporting all `build_*_agent()` functions |
 | `src/agents/inventory/__init__.py` | InventoryAgent builder |
 | `src/agents/inventory/tools.py` | 3 DynamoDB lookup tools |
@@ -24,6 +25,18 @@ The NovaMart multi-agent graph. Each agent is a self-contained module with a bui
 | `src/agents/orchestrator/__init__.py` | OrchestratorAgent builder with factory routing tools |
 | `src/agents/orchestrator/tools.py` | Routing tool factories capturing workers via closure |
 | `src/agents/orchestrator/schema.py` | Orchestrator schemas |
+| `src/workflow/state.py` | WorkflowState helpers + trace singleton |
+| `src/workflow/graph.py` | build_agent_graph, _apply_guardrail |
+| `src/deploy/guardrail.py` | create_guardrail |
+| `src/deploy/runtime.py` | deploy_to_agentcore_runtime |
+| `src/deploy/memory.py` | configure_memory |
+| `src/deploy/observability.py` | configure_observability |
+| `src/deploy/gateway.py` | deploy_agentcore_gateway |
+| `src/serving/invoke.py` | invoke_agent |
+| `src/serving/serve.py` | run_serve |
+| `src/cli/main.py` | deploy_all + argv dispatch |
+| `src/cli/scenarios.py` | TEST_CASES + run_test_scenarios |
+| `src/cli/chat.py` | TEST_CUSTOMERS + run_chat + run_invoke |
 
 ## Conventions
 

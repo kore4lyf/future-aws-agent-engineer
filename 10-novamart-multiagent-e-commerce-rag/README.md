@@ -127,35 +127,30 @@ This populates:
 ## Project Structure
 
 ```
-starter/
-│
-├── config.py                              # Central configuration (reads CloudFormation exports + env vars)
-├── requirements.txt                       # Python dependencies
-├── .env.example                           # Environment variable template
-├── README.md                              # This file
-│
-├── agentcore/                             # AgentCore CLI project (used by `agentcore deploy`)
-│   ├── agentcore.json                     # Runtime definition: entry point, network mode, protocol, env vars
-│   ├── aws-targets.json                   # Deployment target (filled in by the CLI on first deploy)
-│   └── cdk/                               # CDK app the CLI deploys with (managed by the CLI)
-│
-├── src/                                   # Implementation files
-│   ├── agent_orchestrator.py             # Multi-agent orchestration (Tasks 2, 3, 4, 6) ⭐
-│   ├── agent_utils.py                    # Pre-written: terminal trace UI utilities
-│   ├── agent_observability.py            # Pre-written: X-Ray tracing + CloudWatch logging layer
-│   ├── agentcore_cli.py                  # Pre-written: AgentCore CLI wrapper (stage code, agentcore deploy)
-│   ├── bedrock_kb_retrieval.py           # Pre-written: KB retrieval helper
-│   └── demo.py                           # Pre-written: demo script
-│
-├── build/runtime/                         # Created by deploy: the code the CLI packages (gitignored)
-│
-├── infrastructure/
-│   ├── starter_stack.yaml                 # CloudFormation: foundation infra (DynamoDB, S3, S3 Vectors, IAM, CloudWatch)
-│   ├── seed_data.py                       # Data seeding script
-│   └── cleanup.py                         # Deletes everything the project created (run when done)
-│
-└── tests/
-    └── test_agent.py                      # Automated test suite
+src/
+├── agent_orchestrator.py   # Thin facade (re-exports + CLI dispatch)
+├── agents/                 # Modular agent graph
+│   ├── inventory/          # 3 DynamoDB tools + Pydantic schemas
+│   ├── refund/             # 2 refund tools + Pydantic schemas
+│   ├── policy/             # 3 parallel KB retrievers + ThreadPoolExecutor
+│   ├── communication/      # 1 workflow context tool
+│   └── orchestrator/       # 5 routing tools via factory closures
+├── workflow/
+│   ├── state.py            # WorkflowState helpers + trace
+│   └── graph.py            # build_agent_graph, _apply_guardrail
+├── deploy/
+│   ├── guardrail.py        # create_guardrail
+│   ├── runtime.py          # deploy_to_agentcore_runtime
+│   ├── memory.py           # configure_memory
+│   ├── observability.py    # configure_observability
+│   └── gateway.py          # deploy_agentcore_gateway
+├── serving/
+│   ├── invoke.py           # invoke_agent
+│   └── serve.py            # run_serve
+└── cli/
+    ├── main.py             # deploy_all + argv dispatch
+    ├── scenarios.py        # TEST_CASES + run_test_scenarios
+    └── chat.py             # TEST_CUSTOMERS + run_chat + run_invoke
 ```
 
 ### Files to Never Modify

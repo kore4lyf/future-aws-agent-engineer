@@ -36,7 +36,7 @@ Deploy the provided CloudFormation stack, seed DynamoDB tables and S3 with sampl
 ## Phase 1: Multi-Agent Graph
 
 ### 2. Multi-agent graph · Full
-Build the five Strands Agents in `src/agent_orchestrator.py` that form the Orchestrator to Workers hierarchy, plus the shared WorkflowState in DynamoDB with optimistic locking. Every tool function and every data fetch must use a Pydantic schema for input and output validation.
+Build the five Strands Agents in `src/agents/` that form the Orchestrator to Workers hierarchy, plus the shared WorkflowState in DynamoDB with optimistic locking. Every tool function and every data fetch must use a Pydantic schema for input and output validation.
 **Done when:** `python tests/test_agent.py task2` passes, all five agents route correctly with WorkflowState management, and every tool function has a Pydantic schema for its inputs and outputs.
 - [x] Build it: `/develop multi-agent graph`
    - [x] InventoryAgent: three DynamoDB tools with Pydantic schemas, data gatherer only
@@ -53,7 +53,7 @@ Build the five Strands Agents in `src/agent_orchestrator.py` that form the Orche
 ## Phase 2: Deployment
 
 ### 3. Bedrock Guardrail · Full
-Create a Bedrock Guardrail in `src/agent_orchestrator.py` with content, PII, topic, and word policies, then publish a numbered version.
+Create a Bedrock Guardrail in `src/deploy/guardrail.py` with content, PII, topic, and word policies, then publish a numbered version.
 **Done when:** `create_guardrail()` returns `(guardrail_id, guardrail_version)` and the guardrail correctly blocks or anonymizes test inputs.
 - [x] Build it: `/develop bedrock guardrail`
    - [x] Content policy: SEXUAL, VIOLENCE, HATE at HIGH strength; INSULTS, MISCONDUCT at MEDIUM
