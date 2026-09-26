@@ -9,8 +9,8 @@ A multi agent AI customer support system for NovaMart that automatically underst
 
 | # | Feature | Phase | Status |
 |---|---------|-------|--------|
-| 1 | Foundation deployment | Setup | planned |
-| 2 | Multi-agent graph | Phase 1 | planned |
+| 1 | Foundation deployment | Setup | in-progress (verified) |
+| 2 | Multi-agent graph | Phase 1 | in-progress |
 | 3 | Bedrock Guardrail | Phase 2 | planned |
 | 4 | AgentCore Runtime deployment | Phase 2 | planned |
 | 5 | AgentCore Memory | Phase 2 | planned |
@@ -27,22 +27,24 @@ A multi agent AI customer support system for NovaMart that automatically underst
 ### 1. Foundation deployment
 Deploy the provided CloudFormation stack, seed DynamoDB tables and S3 with sample data, and verify the environment is ready for agent development.
 **Done when:** `python config.py` shows all resource names, `python infrastructure/seed_data.py` populates DynamoDB with mock customers and orders, and S3 contains the policy documents.
-- [ ] Deploy CloudFormation stack: `python infrastructure/deploy_stack.py` or AWS Console
-- [ ] Seed data: `python infrastructure/seed_data.py`
-- [ ] Verify environment: `python config.py` shows all resources
-- [ ] Copy `.env.example` to `.env`
+- [x] Deploy CloudFormation stack: `python infrastructure/deploy_stack.py` or AWS Console
+- [x] Seed data: `python infrastructure/seed_data.py`
+- [x] Verify environment: `python config.py` shows all resources
+- [x] Copy `.env.example` to `.env`
+- [x] Review it: `/check review foundation deployment`
 
 ## Phase 1: Multi-Agent Graph
 
 ### 2. Multi-agent graph · Full
 Build the five Strands Agents in `src/agent_orchestrator.py` that form the Orchestrator to Workers hierarchy, plus the shared WorkflowState in DynamoDB with optimistic locking. Every tool function and every data fetch must use a Pydantic schema for input and output validation.
 **Done when:** `python tests/test_agent.py task2` passes, all five agents route correctly with WorkflowState management, and every tool function has a Pydantic schema for its inputs and outputs.
-- [ ] Build it: `/develop multi-agent graph`
-   - [ ] InventoryAgent: three DynamoDB tools with Pydantic schemas, data gatherer only
-   - [ ] RefundAgent: two tools with Pydantic schemas, eligibility logic with tier based windows
-   - [ ] PolicyAgent: three parallel retriever sub agents with ThreadPoolExecutor, all data wrapped in Pydantic schemas
-   - [ ] CommunicationAgent: one tool with Pydantic schema, composes empathetic response
-   - [ ] OrchestratorAgent: five routing tools with Pydantic schemas, WorkflowState management
+- [x] Build it: `/develop multi-agent graph`
+   - [x] InventoryAgent: three DynamoDB tools with Pydantic schemas, data gatherer only
+   - [x] RefundAgent: two tools with Pydantic schemas, eligibility logic with tier based windows
+   - [x] PolicyAgent: three parallel retriever sub agents with ThreadPoolExecutor, all data wrapped in Pydantic schemas
+   - [x] CommunicationAgent: one tool with Pydantic schema, composes empathetic response
+   - [x] OrchestratorAgent: five routing tools with Pydantic schemas, WorkflowState management
+   - code in `src/agents/`
 - [ ] Verify it: `/check verify multi-agent graph`
 - [ ] Test it: `/test multi-agent graph`
 - [ ] Review it: `/check review multi-agent graph`
