@@ -90,11 +90,11 @@ manual console work). Re-running `python src/agent_orchestrator.py deploy` once 
 ### 5. AgentCore Memory
 Configure AgentCore Memory in `src/agent_orchestrator.py` with a session summary strategy and seven day event retention. Session memory must be managed at a reasonable length with compression so context stays relevant and efficient.
 **Done when:** `python tests/test_agent.py task4` passes, the memory resource reaches ACTIVE status, and session memory compression keeps context within reasonable bounds.
-- [ ] Build it: `/develop agentcore memory`
-   - [ ] Create memory resource with `summaryMemoryStrategy` and `eventExpiryDuration=7`
-   - [ ] Wait for ACTIVE status and return memoryArn
-   - [ ] Implement session memory management with compression to keep context at a reasonable length
-- [ ] Verify it: `/check verify agentcore memory`
+- [x] Build it: `/develop agentcore memory`
+   - [x] Create memory resource with `summaryMemoryStrategy` and `eventExpiryDuration=7`
+   - [x] Wait for ACTIVE status and return memoryArn
+   - [x] Implement session memory management with compression to keep context at a reasonable length
+- [x] Verify it: `/check verify agentcore memory`
 - [ ] Test it: `/test agentcore memory`
 
 ## Phase 3: Knowledge Bases
