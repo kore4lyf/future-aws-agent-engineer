@@ -1,0 +1,9 @@
+{
+  "tool": "unittest",
+  "gate": null,
+  "additionalTools": [],
+  "e2eTool": "none",
+  "testDir": "tests/",
+  "filePattern": "test_*.py",
+  "packageManager": "uv"
+}

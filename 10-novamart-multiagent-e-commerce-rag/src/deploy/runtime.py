@@ -52,33 +52,42 @@ def deploy_to_agentcore_runtime(
 
     runtime_name = config.AGENTCORE_RUNTIME_NAME
     print(f"  AWS Account: {config.ACCOUNT_ID}  |  Region: {config.AWS_REGION}")
-    print(f"  Runtime: {runtime_name}  |  CLI project: agentcore/agentcore.json "
-          f"(stack {agentcore_cli.stack_name()})")
+    print(f"  Runtime: {runtime_name}  |  CLI: {agentcore_cli.cli_version()} "
+          f"({agentcore_cli.cli_path()})")
     previous_arn = agentcore_cli.deployed_runtime_arn()
     if previous_arn:
         print(f"  Runtime already deployed - updating it: {previous_arn}")
 
-    # Stage the code the CLI packages (src modules + config.py + pyproject.toml).
+    # Stage the code the CLI packages (src modules + packages + config.py + requirements).
     agentcore_cli.stage_runtime_code()
 
-    # TODO: Configure and deploy the runtime with the AgentCore CLI
-    # 1. Build the runtime environment variables dict `runtime_env` with:
-    #      AWS_REGION, PROJECT_NAME (config.AWS_REGION / config.PROJECT_NAME),
-    #      RETURNS_KB_ID, SHIPPING_KB_ID, WARRANTY_KB_ID (from config),
-    #      AGENT_LOG_GROUP (config.AGENT_LOG_GROUP), and the guardrail
-    #      (GUARDRAIL_ID = guardrail_id, GUARDRAIL_VERSION = guardrail_version)
-    # 2. Write the runtime settings to agentcore/agentcore.json with
-    #      agentcore_cli.configure_runtime(env_vars=runtime_env,
-    #                                      network_mode='PUBLIC',
-    #                                      protocol='HTTP',
-    #                                      execution_role_arn=config.AGENTCORE_ROLE_ARN)
-    # 3. Deploy:  agentcore_cli.deploy()        (runs `agentcore deploy -y`)
-    # 4. Read the ARN the CLI recorded:
-    #      runtime_arn = agentcore_cli.deployed_runtime_arn()
-    runtime_arn = None
+    # Build the runtime environment variables dict with AWS_REGION,
+    # PROJECT_NAME, KB IDs, AGENT_LOG_GROUP, and guardrail config.
+    runtime_env = {
+        'AWS_REGION':      config.AWS_REGION,
+        'PROJECT_NAME':    config.PROJECT_NAME,
+        'RETURNS_KB_ID':   config.RETURNS_KB_ID,
+        'SHIPPING_KB_ID':  config.SHIPPING_KB_ID,
+        'WARRANTY_KB_ID':  config.WARRANTY_KB_ID,
+        'AGENT_LOG_GROUP': config.AGENT_LOG_GROUP,
+        'GUARDRAIL_ID':    guardrail_id,
+        'GUARDRAIL_VERSION': guardrail_version,
+    }
 
-    if not runtime_arn:
-        raise NotImplementedError("deploy_to_agentcore_runtime: AgentCore CLI deployment not implemented")
+    # Write the runtime settings to agentcore/agentcore.json with
+    # PUBLIC networking, HTTP protocol and the foundation execution role.
+    agentcore_cli.configure_runtime(
+        env_vars=runtime_env,
+        network_mode='PUBLIC',
+        protocol='HTTP',
+        execution_role_arn=config.AGENTCORE_ROLE_ARN,
+    )
+
+    # Deploy the runtime via the AgentCore CLI.
+    agentcore_cli.deploy()
+
+    # Read the ARN the CLI recorded after deployment.
+    runtime_arn = agentcore_cli.deployed_runtime_arn()
 
     # Wait for the runtime to become READY and return its ARN.
     print(f"  Runtime deployed: {runtime_arn}")

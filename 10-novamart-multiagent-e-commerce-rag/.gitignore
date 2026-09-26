@@ -45,3 +45,7 @@ venv/
 _to_delete/
 .DS_Store
 agentcore/.cli/
+
+# Python AgentCore toolkit (bedrock-agentcore-starter-toolkit) generated config/cache
+.bedrock_agentcore.yaml
+.bedrock_agentcore/

@@ -1,35 +1,48 @@
 """
 agentcore_cli.py
 ================
-Pre-written helper around the **AgentCore CLI** (`agentcore`, npm package
-`@aws/agentcore`, https://github.com/aws/agentcore-cli) - do not modify.
+Helper around the **AgentCore CLI** (`agentcore`) that deploys the runtime.
 
-The CLI is the deployment tool for Amazon Bedrock AgentCore. It replaces the
-former Python `bedrock-agentcore-starter-toolkit`; both installed the same
-`agentcore` command, so the old toolkit must be uninstalled
-(`pip uninstall bedrock-agentcore-starter-toolkit`).
+Two implementations install a command with that name, and this wrapper drives
+whichever is on PATH:
+
+* **Python toolkit** - `pip install bedrock-agentcore-starter-toolkit`
+  (the current default here). Reads `.bedrock_agentcore.yaml`, deploys with
+  `agentcore deploy --auto-update-on-conflict --env K=V`, and records no local
+  state, so the ARN comes from a paginated `list_agent_runtimes` lookup.
+* **Node CLI** - `npm install -g @aws/agentcore` (the newer product). Reads
+  `agentcore/agentcore.json`, deploys with `agentcore deploy -y`, and writes
+  `agentcore/.cli/deployed-state.json`.
+
+Both write `agentcore/agentcore.json` (via `configure_runtime`) so the project
+config stays valid for either one.
 
 How the project uses it
 -----------------------
 * `agentcore/agentcore.json`  - declarative description of the AgentCore
   Runtime (name, entry point, code location, network mode, protocol,
-  environment variables, execution role). The deploy pipeline updates the
-  runtime entry in this file with the values the student passes in
-  (`configure_runtime`).
+  environment variables, execution role). `configure_runtime` updates the
+  runtime entry with the values the deploy passes in, and mirrors them into
+  `.bedrock_agentcore.yaml` for the Python toolkit.
 * `build/runtime/`            - the code the CLI packages: this project's
-  `src/*.py` modules, `config.py` and a `pyproject.toml` listing the runtime
-  dependencies (`stage_runtime_code`). The CLI downloads matching arm64 /
-  Python 3.12 wheels with `uv`, zips everything and uploads it - AgentCore
-  *direct code deployment* (`build: CodeZip`).
-* `agentcore deploy -y`       - synthesizes a CDK stack
-  (`AgentCore-<project>-default`) that creates or updates the runtime
-  (`deploy`). The first run also bootstraps CDK in the account
-  (`CDKToolkit` stack), which takes a couple of minutes.
-* `agentcore/.cli/deployed-state.json` - written by the CLI after a deploy;
-  the runtime ARN is read from there (`deployed_runtime_arn`).
+  `src/*.py` modules, the `agents/`, `workflow/`, `deploy/`, `serving/` and
+  `cli/` packages, `config.py`, a `requirements.txt` / `pyproject.toml` listing
+  the runtime dependencies, and the `.agentcore-runtime` marker
+  (`stage_runtime_code`). The CLI downloads matching arm64 / Python 3.12 wheels
+  with `uv`, zips everything and uploads it - AgentCore *direct code
+  deployment*.
+* `agentcore deploy`          - creates or updates the runtime
+  (`deploy`). The first run also bootstraps in the account.
 
-Prerequisites (see README): Node.js 20+, `npm install -g @aws/agentcore@0.30.0`,
-`uv`, and AWS credentials for the project region.
+Why `requirements.txt` matters: with only a `pyproject.toml` the Python toolkit
+runs `uv pip compile` on the *host* (Windows), which pins `pywin32` - a
+strands-agents -> mcp dependency that is correctly marked
+`sys_platform == 'win32'` - and the later Linux ARM64 install then fails with
+"pywin32==312 has no wheels ... manylinux". A `requirements.txt` makes uv
+evaluate markers against the target platform instead.
+
+Prerequisites (see README): `uv`, the AgentCore CLI (Python toolkit or Node
+CLI), and AWS credentials for the project region.
 """
 
 import json
@@ -52,6 +65,10 @@ TARGETS_PATH  = os.path.join(AGENTCORE_DIR, 'aws-targets.json')
 STATE_PATH    = os.path.join(AGENTCORE_DIR, '.cli', 'deployed-state.json')
 RUNTIME_CODE_DIR = os.path.join(PROJECT_ROOT, 'build', 'runtime')   # codeLocation
 
+# The Python toolkit (bedrock-agentcore-starter-toolkit) reads a different,
+# project-root config file with the same "agents" shape as agentcore.json.
+YAML_CONFIG_PATH = os.path.join(PROJECT_ROOT, '.bedrock_agentcore.yaml')
+
 # ─────────────────────────────────────────────────────
 # RUNTIME PACKAGE SETTINGS
 # ─────────────────────────────────────────────────────
@@ -72,13 +89,20 @@ RUNTIME_PROJECT_FILES = [
     os.path.join(SRC_DIR, 'agentcore_cli.py'),
     os.path.join(PROJECT_ROOT, 'config.py'),
 ]
+# agent_orchestrator.py is a thin facade: at import time it re-exports from these
+# packages, so the deployed runtime cannot start without them. Staging only the
+# flat file list above makes every invoke fail with
+# `ModuleNotFoundError: No module named 'workflow'`.
+RUNTIME_PACKAGE_DIRS = ['agents', 'workflow', 'deploy', 'serving', 'cli']
+# Directories never worth shipping inside the runtime package.
+RUNTIME_EXCLUDE_DIRS = {'__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache'}
 
 INSTALL_HINT = (
     "The AgentCore CLI is not installed or not on PATH.\n"
-    "  Install Node.js 20+ and uv, then run:  npm install -g @aws/agentcore@0.30.0\n"
-    "  (uninstall the old toolkit first if present: "
-    "pip uninstall bedrock-agentcore-starter-toolkit)\n"
-    "  Docs: https://github.com/aws/agentcore-cli"
+    "  Install the Python toolkit:  pip install bedrock-agentcore-starter-toolkit\n"
+    "  (the Node CLI `npm install -g @aws/agentcore` also works - this wrapper\n"
+    "   drives whichever is on PATH)\n"
+    "  Docs: https://github.com/aws/bedrock-agentcore-starter-toolkit\n"
 )
 
 
@@ -96,8 +120,33 @@ def cli_path() -> str:
 
 def cli_version() -> str:
     """Return the installed CLI version string (e.g. '0.30.0')."""
-    out = subprocess.run([cli_path(), '--version'], capture_output=True, text=True)
-    return (out.stdout or out.stderr).strip()
+    out = subprocess.run([cli_path(), '--version'], capture_output=True, text=True,
+                         encoding='utf-8', errors='replace')
+    text = ((out.stdout or '') + (out.stderr or '')).strip()
+    if out.returncode == 0 and text:
+        return text
+    # The Python toolkit (bedrock-agentcore-starter-toolkit) has no top-level
+    # --version flag. It may be installed in a different interpreter than this
+    # one, so resolve its dist-info from the `agentcore` executable's own
+    # site-packages rather than from importlib.metadata.
+    import glob
+    import re as _re
+    exe = cli_path()
+    for sp in glob.glob(os.path.join(os.path.dirname(os.path.dirname(exe)),
+                                    'Lib', 'site-packages')) + \
+             glob.glob(os.path.join(os.path.dirname(os.path.dirname(exe)),
+                                    'lib', 'python*', 'site-packages')):
+        for meta in glob.glob(os.path.join(
+                sp, 'bedrock_agentcore_starter_toolkit-*.dist-info', 'METADATA')):
+            with open(meta, encoding='utf-8', errors='replace') as fh:
+                for line in fh:
+                    if line.startswith('Version:'):
+                        return f"{line.split(':', 1)[1].strip()} (python toolkit)"
+    try:
+        from importlib.metadata import version
+        return f"{version('bedrock-agentcore-starter-toolkit')} (python toolkit)"
+    except Exception:
+        return 'unknown'
 
 
 def run(*args: str, capture: bool = False, check: bool = True) -> subprocess.CompletedProcess:
@@ -108,9 +157,13 @@ def run(*args: str, capture: bool = False, check: bool = True) -> subprocess.Com
     env = dict(os.environ)
     env.setdefault('AWS_REGION', config.AWS_REGION)
     env.setdefault('AWS_DEFAULT_REGION', config.AWS_REGION)
+    # Silence the Python toolkit's "no longer supported" banner and force UTF-8
+    # so its rich/typer output does not raise UnicodeEncodeError on Windows.
+    env.setdefault('AGENTCORE_SUPPRESS_RECOMMENDATION', '1')
+    env.setdefault('PYTHONIOENCODING', 'utf-8')
     result = subprocess.run(
         [cli_path(), *args], cwd=PROJECT_ROOT, env=env,
-        capture_output=capture, text=True,
+        capture_output=capture, text=True, encoding='utf-8', errors='replace',
     )
     if check and result.returncode != 0:
         detail = (result.stderr or result.stdout or '').strip() if capture else ''
@@ -194,6 +247,10 @@ def configure_runtime(env_vars: dict = None, network_mode: str = None, protocol:
         merged.update({k: str(v) for k, v in env_vars.items() if v not in (None, '')})
         rt['envVars'] = [{'name': k, 'value': v} for k, v in merged.items()]
     write_project_config(spec)
+    # Keep the Python toolkit's .bedrock_agentcore.yaml in sync. It reads the
+    # network/protocol/role from YAML and the env vars from `deploy --env`.
+    write_yaml_runtime_config(env_vars=env_vars, network_mode=network_mode,
+                              protocol=protocol, execution_role_arn=execution_role_arn)
     return rt
 
 
@@ -205,6 +262,48 @@ def stack_name() -> str:
     except FileNotFoundError:
         pass
     return f"AgentCore-{project.replace('_', '-')}-default"
+
+
+def write_yaml_runtime_config(env_vars: dict = None, network_mode: str = None,
+                              protocol: str = None, execution_role_arn: str = None) -> dict:
+    """
+    Write the Python toolkit's project config (.bedrock_agentcore.yaml).
+
+    Mirrors configure_runtime() for `bedrock-agentcore-starter-toolkit`, which
+    reads a project-root YAML file keyed by agent name instead of
+    agentcore/agentcore.json. Environment variables are NOT stored here - the
+    Python toolkit takes them on the command line (`agentcore deploy --env K=V`).
+    """
+    import yaml
+
+    agent = {
+        'name': config.AGENTCORE_RUNTIME_NAME,
+        'language': 'python',
+        'entrypoint': RUNTIME_ENTRYPOINT,
+        'deployment_type': 'direct_code_deploy',
+        'runtime_type': RUNTIME_PYTHON,
+        'source_path': os.path.relpath(RUNTIME_CODE_DIR, PROJECT_ROOT).replace(os.sep, '/'),
+        # The toolkit's schema puts the execution role and the network /
+        # protocol configuration under `aws`, not under `bedrock_agentcore`.
+        'aws': {
+            'execution_role': execution_role_arn,
+            'execution_role_auto_create': False,
+            'account': config.ACCOUNT_ID,
+            'region': config.AWS_REGION,
+            'network_configuration': {'network_mode': network_mode or 'PUBLIC'},
+            'protocol_configuration': {'server_protocol': protocol or 'HTTP'},
+        },
+    }
+    spec = {'default_agent': config.AGENTCORE_RUNTIME_NAME,
+            'agents': {config.AGENTCORE_RUNTIME_NAME: agent}}
+    with open(YAML_CONFIG_PATH, 'w', encoding='utf-8') as fh:
+        yaml.safe_dump(spec, fh, sort_keys=False)
+    return spec
+
+
+def yaml_runtime_env_vars() -> dict:
+    """Environment variables to pass to `agentcore deploy --env K=V`."""
+    return {k: str(v) for k, v in runtime_env_vars().items() if v not in (None, '')}
 
 
 # ─────────────────────────────────────────────────────
@@ -228,7 +327,29 @@ def stage_runtime_code() -> str:
     for path in RUNTIME_PROJECT_FILES:
         shutil.copy2(path, os.path.join(RUNTIME_CODE_DIR, os.path.basename(path)))
 
+    for pkg in RUNTIME_PACKAGE_DIRS:
+        src_pkg = os.path.join(SRC_DIR, pkg)
+        if not os.path.isdir(src_pkg):
+            raise FileNotFoundError(f"Cannot stage runtime code, missing package dir: {src_pkg}")
+        shutil.copytree(
+            src_pkg,
+            os.path.join(RUNTIME_CODE_DIR, pkg),
+            ignore=shutil.ignore_patterns(*RUNTIME_EXCLUDE_DIRS, '*.pyc'),
+        )
+
     deps = ',\n'.join(f'  "{req}"' for req in RUNTIME_REQUIREMENTS)
+
+    # requirements.txt is what the Python toolkit actually installs from, and it
+    # is preferred over pyproject.toml. It matters that it exists: with only a
+    # pyproject.toml the toolkit runs `uv pip compile` on the *host* (Windows),
+    # which pins pywin32 (a strands-agents -> mcp dependency, correctly marked
+    # `sys_platform == 'win32'`) into a lock file, and the later Linux ARM64
+    # install then fails with "pywin32==312 has no wheels ... manylinux". Going
+    # straight to requirements.txt makes uv evaluate the markers against the
+    # target platform instead, so pywin32 is skipped.
+    with open(os.path.join(RUNTIME_CODE_DIR, 'requirements.txt'), 'w', encoding='utf-8') as fh:
+        fh.write('\n'.join(RUNTIME_REQUIREMENTS) + '\n')
+
     with open(os.path.join(RUNTIME_CODE_DIR, 'pyproject.toml'), 'w', encoding='utf-8') as fh:
         fh.write(
             '[project]\n'
@@ -237,12 +358,19 @@ def stage_runtime_code() -> str:
             'description = "NovaMart multi-agent support system - AgentCore Runtime package"\n'
             'requires-python = ">=3.12"\n'
             f'dependencies = [\n{deps},\n]\n'
+            '\n'
+            '[tool.uv]\n'
+            # Same upstream issue as above, for any path that resolves the
+            # pyproject: keep pywin32 off non-Windows targets.
+            'override-dependencies = ["pywin32; sys_platform == \'win32\'"]\n'
         )
     with open(os.path.join(RUNTIME_CODE_DIR, RUNTIME_MARKER), 'w', encoding='utf-8') as fh:
         fh.write('agentcore runtime package\n')
 
     print(f"  Runtime code staged in {os.path.relpath(RUNTIME_CODE_DIR, PROJECT_ROOT)}/ "
-          f"({len(RUNTIME_PROJECT_FILES)} files + pyproject.toml, entry point {RUNTIME_ENTRYPOINT})")
+          f"({len(RUNTIME_PROJECT_FILES)} files + {len(RUNTIME_PACKAGE_DIRS)} packages "
+          f"({', '.join(RUNTIME_PACKAGE_DIRS)}) + requirements.txt/pyproject.toml, "
+          f"entry point {RUNTIME_ENTRYPOINT})")
     return RUNTIME_CODE_DIR
 
 
@@ -252,14 +380,24 @@ def stage_runtime_code() -> str:
 
 def deploy(verbose: bool = False) -> None:
     """
-    Run `agentcore deploy -y` (non-interactive). The CLI packages
-    build/runtime/, synthesizes the CDK stack and creates or updates the
-    AgentCore Runtime; it bootstraps CDK on the first run.
+    Deploy the staged build/runtime/ to AgentCore Runtime.
+
+    Uses the Python toolkit's non-interactive interface:
+      agentcore deploy --env K=V ... --auto-update-on-conflict
+    (`-y` belongs to the Node CLI and is rejected by the Python toolkit, which
+    is already non-interactive.)
     """
     if not os.path.isdir(RUNTIME_CODE_DIR):
         stage_runtime_code()
-    print(f"  Running: agentcore deploy -y   (CLI {cli_version()}, region {config.AWS_REGION})", flush=True)
-    args = ['deploy', '-y'] + (['-v'] if verbose else [])
+
+    args = ['deploy', '--auto-update-on-conflict']
+    for name, value in yaml_runtime_env_vars().items():
+        args += ['--env', f'{name}={value}']
+    if verbose:
+        args.append('--verbose')
+
+    print(f"  Running: agentcore {' '.join(args[:2])} ...   "
+          f"(CLI {cli_version()}, region {config.AWS_REGION})", flush=True)
     run(*args)
 
 
@@ -274,8 +412,9 @@ def read_deployed_state() -> dict:
 def deployed_runtime_arn() -> str:
     """
     ARN of the deployed runtime, or '' if it is not deployed.
-    Read from agentcore/.cli/deployed-state.json (written by `agentcore
-    deploy`), falling back to a lookup by name in the AWS account.
+    Read from agentcore/.cli/deployed-state.json (written by the Node CLI's
+    `agentcore deploy`), falling back to a paginated lookup by name in AWS
+    (the Python toolkit records no local state file).
     """
     for target in read_deployed_state().get('targets', {}).values():
         runtimes = (target.get('resources') or {}).get('runtimes') or {}
@@ -285,9 +424,11 @@ def deployed_runtime_arn() -> str:
     try:
         import boto3
         ctl = boto3.client('bedrock-agentcore-control', region_name=config.AWS_REGION)
-        for rt in ctl.list_agent_runtimes().get('agentRuntimes', []):
-            if rt['agentRuntimeName'] == config.AGENTCORE_RUNTIME_NAME:
-                return rt['agentRuntimeArn']
+        paginator = ctl.get_paginator('list_agent_runtimes')
+        for page in paginator.paginate():
+            for rt in page.get('agentRuntimes', []):
+                if rt.get('agentRuntimeName') == config.AGENTCORE_RUNTIME_NAME:
+                    return rt['agentRuntimeArn']
     except Exception:
         pass
     return ''

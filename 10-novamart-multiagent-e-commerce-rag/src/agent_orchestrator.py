@@ -200,5 +200,13 @@ _SRC_DIR        = os.path.dirname(os.path.abspath(__file__))
 
 
 if __name__ == '__main__':
-    from cli.main import main as _cli_main
-    _cli_main()
+    # AgentCore Runtime starts the staged entry point with no arguments. The
+    # .agentcore-runtime marker (written by agentcore_cli.stage_runtime_code)
+    # is what distinguishes that from a bare `python src/agent_orchestrator.py`,
+    # so the runtime serves HTTP instead of printing the CLI usage text.
+    if not sys.argv[1:] and os.path.exists(os.path.join(_SRC_DIR, _RUNTIME_MARKER)):
+        from serving.serve import run_serve
+        run_serve()
+    else:
+        from cli.main import main as _cli_main
+        _cli_main()

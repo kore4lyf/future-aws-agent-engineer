@@ -35,6 +35,15 @@ def _apply_guardrail(agents: list) -> None:
     guardrail_version = config.GUARDRAIL_VERSION
     if not guardrail_id or not guardrail_version:
         return
+    # The project requires a published (numbered) version, not DRAFT - Bedrock
+    # rejects DRAFT at model construction with an opaque error, so fail here
+    # with something actionable instead.
+    if not str(guardrail_version).isdigit():
+        raise ValueError(
+            f"GUARDRAIL_VERSION must be a published, numbered version, got "
+            f"{guardrail_version!r}. Run `python src/agent_orchestrator.py deploy` "
+            f"and copy the printed version into .env."
+        )
     for agent in agents:
         model = getattr(agent, 'model', None)
         if model is not None and hasattr(model, 'update_config'):

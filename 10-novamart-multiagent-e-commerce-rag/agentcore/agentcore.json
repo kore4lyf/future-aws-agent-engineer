@@ -19,7 +19,30 @@
       "protocol": "HTTP",
       "instrumentation": {
         "enableOtel": false
-      }
+      },
+      "executionRoleArn": "arn:aws:iam::067269469477:role/novamart-agentcore-agentcore-role",
+      "envVars": [
+        {
+          "name": "AWS_REGION",
+          "value": "us-east-1"
+        },
+        {
+          "name": "PROJECT_NAME",
+          "value": "novamart-agentcore"
+        },
+        {
+          "name": "AGENT_LOG_GROUP",
+          "value": "/aws/bedrock/agentcore/novamart-agentcore"
+        },
+        {
+          "name": "GUARDRAIL_ID",
+          "value": "puwoy0wtj9a7"
+        },
+        {
+          "name": "GUARDRAIL_VERSION",
+          "value": "9"
+        }
+      ]
     }
   ],
   "memories": [],

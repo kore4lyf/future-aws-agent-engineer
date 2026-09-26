@@ -62,20 +62,30 @@ Create a Bedrock Guardrail in `src/deploy/guardrail.py` with content, PII, topic
    - [x] Word policy: enable managed profanity list
    - [x] Publish numbered version via `create_guardrail_version()`
    - code in `src/agent_orchestrator.py`
-- [ ] Verify it: `/check verify bedrock guardrail`
-- [ ] Test it: `/test bedrock guardrail`
-- [ ] Review it: `/check review bedrock guardrail`
-- [ ] Document it: `/document bedrock guardrail`
+- [x] Verify it: `/check verify bedrock guardrail`
+- [x] Test it: `/test bedrock guardrail`
+- [x] Review it: `/check review bedrock guardrail`
+- [x] Document it: `/document bedrock guardrail`
 
 ### 4. AgentCore Runtime deployment
 Deploy the multi-agent system to AgentCore Runtime in `src/agent_orchestrator.py` using the AgentCore CLI, with guardrail attached via environment variables.
 **Done when:** `.env` contains `AGENTCORE_RUNTIME_ARN` and `python tests/test_agent.py task3` passes.
-- [ ] Build it: `/develop agentcore runtime deployment`
-   - [ ] Stage code and configure runtime with PUBLIC networking, HTTP protocol, foundation execution role
-   - [ ] Set runtime environment variables: AWS_REGION, PROJECT_NAME, KB IDs, AGENT_LOG_GROUP, GUARDRAIL_ID, GUARDRAIL_VERSION
-   - [ ] Deploy via `agentcore_cli.deploy()` and read deployed ARN
-- [ ] Verify it: `/check verify agentcore runtime deployment`
-- [ ] Test it: `/test agentcore runtime deployment`
+- [x] Build it: `/develop agentcore runtime deployment`
+   - [x] Stage code and configure runtime with PUBLIC networking, HTTP protocol, foundation execution role
+   - [x] Set runtime environment variables: AWS_REGION, PROJECT_NAME, KB IDs, AGENT_LOG_GROUP, GUARDRAIL_ID, GUARDRAIL_VERSION
+   - [x] Deploy via `agentcore_cli.deploy()` and read deployed ARN
+- [x] Verify it: `/check verify agentcore runtime deployment`
+- [x] Test it: `/test agentcore runtime deployment`
+
+Deployed: `novamart_agentcore_runtime-KFKbdJ7XXQ` (READY, PUBLIC, HTTP). The runtime answers a live
+`invoke_agent_runtime` end to end through Orchestrator → Inventory → Communication.
+Regression suite: `python -m unittest tests.test_agentcore_runtime_deploy` (44 tests; add
+`$env:RUN_LIVE_INVOKE = "1"` for the one real invocation).
+
+Status stays `in-progress` while task3 scores 13/20 rather than 20/20: `test_3_4` also requires
+`RETURNS_KB_ID`, `SHIPPING_KB_ID` and `WARRANTY_KB_ID`, which belong to feature 6 (Knowledge Bases,
+manual console work). Re-running `python src/agent_orchestrator.py deploy` once those IDs are in
+`.env` adds them to the runtime and closes the remaining 7 points, with no code change needed.
 
 ### 5. AgentCore Memory
 Configure AgentCore Memory in `src/agent_orchestrator.py` with a session summary strategy and seven day event retention. Session memory must be managed at a reasonable length with compression so context stays relevant and efficient.
