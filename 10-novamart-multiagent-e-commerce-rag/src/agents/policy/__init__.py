@@ -77,14 +77,14 @@ def build_policy_agent() -> Agent:
 
         trace.kb_done(len(results))
         for domain in ['Returns', 'Shipping', 'Warranty']:
-            trace.kb_result(domain, results.get(domain, '[No results]'))
+            trace.kb_result(domain, str(results.get(domain, '[No results]')))
 
         output = SearchAllPoliciesOutput(
             returns=str(results.get('Returns', '')),
             shipping=str(results.get('Shipping', '')),
             warranty=str(results.get('Warranty', '')),
             synthesis="\n\n".join(
-                f"[{domain} Policy]\n{results.get(domain, 'No results')}"
+                f"[{domain} Policy]\n{str(results.get(domain, 'No results'))}"
                 for domain in ['Returns', 'Shipping', 'Warranty']
             ),
         )
