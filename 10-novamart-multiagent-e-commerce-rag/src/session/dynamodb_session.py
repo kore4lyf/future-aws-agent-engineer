@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 import time
 from pathlib import Path
@@ -56,7 +57,7 @@ class DynamoDBSessionManager(ConversationManager):
         registry.add_callback(AfterInvocationEvent, self._on_after_invocation)
 
     def _on_after_invocation(self, event: AfterInvocationEvent) -> None:
-        session_id = getattr(event.agent, 'session_id', None) or self._current_session_id
+        session_id = self._resolve_session_id(event.agent)
         if not session_id:
             return
         try:
@@ -64,6 +65,24 @@ class DynamoDBSessionManager(ConversationManager):
             self._persist(session_id, messages)
         except Exception:
             logger.debug("DynamoDBSessionManager persist failed", exc_info=True)
+
+    @staticmethod
+    def _resolve_session_id(agent: Any) -> str | None:
+        state = getattr(agent, 'state', None) or {}
+        for key in ('session_id', 'Session ID', 'sessionId'):
+            value = state.get(key)
+            if isinstance(value, str) and value:
+                return value
+        messages = getattr(agent, 'messages', None) or []
+        for message in reversed(messages):
+            raw = message.get('content') if isinstance(message, dict) else getattr(message, 'content', None)
+            if not raw:
+                continue
+            text = raw[0].get('text', '') if isinstance(raw, list) and raw and isinstance(raw[0], dict) else str(raw)
+            match = re.search(r'\[Session ID:\s*([^\]]+)\]', text)
+            if match:
+                return match.group(1).strip()
+        return None
 
     def _persist(self, session_id: str, messages: list[Message]) -> None:
         if not self.table_name or not messages:
