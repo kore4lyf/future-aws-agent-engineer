@@ -92,6 +92,31 @@ def _strip_xml_tags(text: str) -> str:
 _real_stdout = sys.stdout
 
 
+def _make_stdout_lossy(stream) -> None:
+    """
+    Make a text stream tolerant of characters its codec cannot represent.
+
+    The trace draws box rules (U+2500 etc). On Windows the console stream uses
+    a codepage such as cp1252, where those raise UnicodeEncodeError. Because the
+    trace runs inside the orchestrator's routing tools, that exception would
+    abort the tool call and surface to the customer as a fake outage. Decorative
+    output must never break business logic, so unencodable characters are
+    replaced instead of raised.
+    """
+    reconfigure = getattr(stream, 'reconfigure', None)
+    if reconfigure is None:
+        return
+    try:
+        reconfigure(errors='replace')
+    except (ValueError, OSError):
+        pass
+
+
+for _stream in (sys.stdout, sys.stderr):
+    _make_stdout_lossy(_stream)
+_make_stdout_lossy(_real_stdout)
+
+
 def _trace_print(*args, **kwargs) -> None:
     """
     Print directly to the real stdout, bypassing the _TraceWriter proxy.
@@ -99,7 +124,13 @@ def _trace_print(*args, **kwargs) -> None:
     double-processed by the proxy's line-rewriting logic.
     """
     kwargs.setdefault('file', _real_stdout)
-    print(*args, **kwargs)
+    try:
+        print(*args, **kwargs)
+    except UnicodeEncodeError:
+        # Last-resort fallback if the stream could not be made lossy above.
+        text = ' '.join(str(a) for a in args)
+        print(text.encode('ascii', 'replace').decode('ascii'),
+              file=kwargs['file'])
 
 
 # ─────────────────────────────────────────────────────

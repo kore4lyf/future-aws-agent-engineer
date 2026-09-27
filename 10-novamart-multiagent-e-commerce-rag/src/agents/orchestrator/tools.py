@@ -87,9 +87,9 @@ def make_route_to_inventory_agent(get_inventory_agent):
         old_version = state['version'] if state else 0
         inventory_agent = get_inventory_agent()
         result = inventory_agent(f"Customer {customer_id}: {request}")
-        _update_workflow_state(session_id, {'inventory_agent': result}, old_version)
+        _update_workflow_state(session_id, {'inventory_agent': str(result)}, old_version)
         trace.step_done('inventory_agent', old_version)
-        return result
+        return str(result)
     return route_to_inventory_agent
 
 
@@ -114,9 +114,9 @@ def make_route_to_policy_agent(get_policy_agent):
         old_version = state['version'] if state else 0
         policy_agent = get_policy_agent()
         result = policy_agent(request)
-        _update_workflow_state(session_id, {'policy_agent': result}, old_version)
+        _update_workflow_state(session_id, {'policy_agent': str(result)}, old_version)
         trace.step_done('policy_agent', old_version)
-        return result
+        return str(result)
     return route_to_policy_agent
 
 
@@ -142,9 +142,9 @@ def make_route_to_refund_agent(get_refund_agent):
         old_version = state['version'] if state else 0
         refund_agent = get_refund_agent()
         result = refund_agent(f"Customer {customer_id}: {request}")
-        _update_workflow_state(session_id, {'refund_agent': result}, old_version)
+        _update_workflow_state(session_id, {'refund_agent': str(result)}, old_version)
         trace.step_done('refund_agent', old_version)
-        return result
+        return str(result)
     return route_to_refund_agent
 
 
@@ -189,7 +189,7 @@ def make_route_to_communication_agent(get_communication_agent):
             f"Customer {customer_id} asked: {original_request}\n\n"
             f"Context from other agents:\n{context_summary}"
         )
-        _update_workflow_state(session_id, {'communication_agent': result}, old_version)
+        _update_workflow_state(session_id, {'communication_agent': str(result)}, old_version)
         trace.step_done('communication_agent', old_version)
-        return result
+        return str(result)
     return route_to_communication_agent

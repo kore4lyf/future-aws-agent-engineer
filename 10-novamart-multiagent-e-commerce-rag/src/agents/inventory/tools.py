@@ -21,6 +21,7 @@ import config
 from agents.inventory.schema import (
     CheckOrderStatusInput,
     CheckOrderStatusOutput,
+    CustomerProfile,
     GetCustomerTierInput,
     GetCustomerTierOutput,
     ListCustomerOrdersInput,

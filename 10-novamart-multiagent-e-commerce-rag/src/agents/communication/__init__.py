@@ -48,7 +48,15 @@ Compose a warm, professional, empathetic response that:
   - Includes all relevant details (order numbers, dates, policy references)
   - Explains decisions clearly (especially refund approvals/denials)
   - Provides next steps or call-to-action when appropriate
-  - Uses natural language - never expose internal system terminology"""
+  - Uses natural language - never expose internal system terminology
+
+If the WorkflowState contains no findings, the request was conversational
+rather than transactional. In that case answer directly from the
+conversation itself.
+
+NEVER claim there is a technical issue, that you cannot access the
+customer's account, or that information is unavailable. If a detail was
+not provided, simply ask the customer for it."""
 
     return Agent(
         model=model,
