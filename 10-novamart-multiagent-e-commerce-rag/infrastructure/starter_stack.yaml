@@ -67,6 +67,21 @@ Resources:
         AttributeName: ttl
         Enabled: true
 
+  AgentSessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${ProjectName}-agent-sessions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: session_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: session_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
   # ─────────────────────────────────────────────
   # S3 - Policy Documents (KB data source + deployment artifacts)
   # ─────────────────────────────────────────────
@@ -232,6 +247,7 @@ Resources:
               # OrdersTable:        InventoryAgent (read), RefundAgent (write)
               # CustomersTable:     InventoryAgent (read), RefundAgent (read fallback)
               # WorkflowStateTable: OrchestratorAgent (read + write, optimistic lock)
+              # AgentSessionsTable: Orchestrator persistent session memory (Task 9)
               - Effect: Allow
                 Action:
                   - dynamodb:GetItem
@@ -243,6 +259,7 @@ Resources:
                   - !GetAtt OrdersTable.Arn
                   - !GetAtt CustomersTable.Arn
                   - !GetAtt WorkflowStateTable.Arn
+                  - !GetAtt AgentSessionsTable.Arn
 
               # S3 - policy documents bucket
               # Used by seed_data.py to upload docs and by Bedrock KB sync.
@@ -295,6 +312,11 @@ Outputs:
     Value: !Ref WorkflowStateTable
     Export:
       Name: !Sub ${ProjectName}-WorkflowStateTable
+
+  AgentSessionsTableName:
+    Value: !Ref AgentSessionsTable
+    Export:
+      Name: !Sub ${ProjectName}-AgentSessionsTable
 
   PolicyDocumentsBucketName:
     Value: !Ref PolicyDocumentsBucket

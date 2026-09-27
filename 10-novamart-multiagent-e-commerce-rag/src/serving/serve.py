@@ -20,6 +20,7 @@ from agent_observability import setup_logging, tracer, flush_logs
 from agent_utils import _strip_xml_tags
 from workflow.state import _read_workflow_state
 from workflow.graph import build_agent_graph
+from session.dynamodb_session import DynamoDBSessionManager
 
 
 __all__ = ['run_serve']
@@ -57,7 +58,8 @@ def run_serve() -> None:
             if 'agent' not in graph:
                 setup_logging()
                 graph['agent'] = build_agent_graph()
-        return graph['agent']
+                graph['session_manager'] = DynamoDBSessionManager()
+        return graph['agent'], graph['session_manager']
 
     @app.entrypoint
     def invoke(payload, context=None):
@@ -69,9 +71,14 @@ def run_serve() -> None:
         if not prompt:
             return {'error': "payload must include 'prompt'"}
 
+        orchestrator, session_mgr = _orchestrator()
+        previous = session_mgr.load_session(session_id) or []
+        if previous:
+            orchestrator.messages = previous + orchestrator.messages
+
         enriched = f"[Session ID: {session_id}] [Customer ID: {customer_id}] {prompt}"
         with tracer.trace_request(session_id, customer_id, prompt):
-            response = _orchestrator()(enriched)
+            response = orchestrator(enriched)
 
         state = _read_workflow_state(session_id) or {}
         text  = _strip_xml_tags(state.get('communication_agent', '') or str(response))

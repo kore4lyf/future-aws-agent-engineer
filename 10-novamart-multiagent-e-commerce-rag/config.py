@@ -144,6 +144,7 @@ _LAZY = {
     'ORDERS_TABLE':         lambda: _get('OrdersTable'),
     'CUSTOMERS_TABLE':      lambda: _get('CustomersTable'),
     'WORKFLOW_STATE_TABLE': lambda: _get('WorkflowStateTable'),
+    'AGENT_SESSIONS_TABLE': lambda: _get('AgentSessionsTable'),
 
     # S3 (policy documents + deployment artifacts)
     'POLICY_BUCKET':        lambda: _get('PolicyBucket'),
@@ -241,6 +242,7 @@ def print_config():
     _display("Orders Table:",        _resolve('ORDERS_TABLE'))
     _display("Customers Table:",     _resolve('CUSTOMERS_TABLE'))
     _display("Workflow State Table:", _resolve('WORKFLOW_STATE_TABLE'))
+    _display("Agent Sessions Table:",  _resolve('AGENT_SESSIONS_TABLE'))
     _display("Policy Bucket:",       _resolve('POLICY_BUCKET'))
     _display("Vector Bucket:",       _resolve('VECTOR_STORE_BUCKET'))
     _display("Vector Indexes:",      ", ".join(_resolve(n) for n in

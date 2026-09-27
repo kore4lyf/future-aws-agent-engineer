@@ -16,6 +16,7 @@ from strands import Agent
 from strands.models import BedrockModel
 
 import config
+from session.dynamodb_session import DynamoDBSessionManager
 from agents.orchestrator.tools import (
     make_initialize_session,
     make_route_to_inventory_agent,
@@ -66,6 +67,10 @@ CRITICAL: You must NEVER write the final customer-facing response yourself.
 You must always delegate to route_to_communication_agent as your very last
 tool call - no exceptions, even when you believe you already have a complete answer."""
 
+    # Persistent session memory: DynamoDB stores conversation history so
+    # multi turn conversations retain earlier messages across invocations.
+    session_manager = DynamoDBSessionManager()
+
     # Bind worker agents into routing tools via factory-made closures.
     # The LLM only sees natural parameters (session_id, customer_id, request);
     # the agent instances are captured internally.
@@ -79,4 +84,5 @@ tool call - no exceptions, even when you believe you already have a complete ans
             make_route_to_refund_agent(lambda: refund_agent),
             make_route_to_communication_agent(lambda: communication_agent),
         ],
+        conversation_manager=session_manager,
     )
