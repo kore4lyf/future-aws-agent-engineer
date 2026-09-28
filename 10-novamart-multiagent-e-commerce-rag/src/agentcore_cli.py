@@ -93,7 +93,7 @@ RUNTIME_PROJECT_FILES = [
 # packages, so the deployed runtime cannot start without them. Staging only the
 # flat file list above makes every invoke fail with
 # `ModuleNotFoundError: No module named 'workflow'`.
-RUNTIME_PACKAGE_DIRS = ['agents', 'workflow', 'deploy', 'serving', 'cli']
+RUNTIME_PACKAGE_DIRS = ['agents', 'workflow', 'deploy', 'serving', 'cli', 'session']
 # Directories never worth shipping inside the runtime package.
 RUNTIME_EXCLUDE_DIRS = {'__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache'}
 
