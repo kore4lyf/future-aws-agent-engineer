@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
 
-from strands import tool
+from agent_observability import tool
 
 from agent_orchestrator import _read_workflow_state, _update_workflow_state, trace
 from agents.orchestrator.schema import (

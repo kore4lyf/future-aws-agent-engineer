@@ -13,7 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent))
 
-from strands import Agent, tool
+from strands import Agent
+from agent_observability import tool
 from strands.models import BedrockModel
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
