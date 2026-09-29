@@ -732,8 +732,6 @@ Use this project rubric to understand and assess the project criteria.
 - All worker agents use `config.WORKER_MODEL_ID` (Claude Sonnet 4.5) for higher-quality reasoning
 - Model selections are not hardcoded - config constants are used throughout
 
-### Suggestions to Make Your Project Stand Out
-
 - Run adversarial inputs against the Guardrail (prompt injection attempts, competitor mentions, legal threats) and document how each is handled with screenshots of blocked responses - demonstrating real-world safety validation.
 - Add persistent conversation memory by creating a DynamoDB `agent-sessions` table and integrating the Strands SDK `DynamoDbSessionStorage` into the Orchestrator - enabling the agent to recall earlier messages in the same chat session without relying solely on AgentCore Memory, and demonstrating how local session storage complements cloud-based memory strategies.
 - Build a CloudWatch dashboard showing agent invocation count over time, average response latency per agent type, and Guardrail trigger frequency - demonstrating production-grade observability thinking.
