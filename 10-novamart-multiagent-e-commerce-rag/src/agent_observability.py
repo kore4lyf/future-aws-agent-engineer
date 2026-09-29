@@ -67,9 +67,9 @@ import config
 logger = logging.getLogger('novamart.observability')
 
 
-# ─────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # SETTINGS
-# ─────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Read from environment variables so local and AgentCore Runtime execution use
 # the same settings.
 
@@ -110,9 +110,9 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
-# ─────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # X-RAY TRACER
-# ─────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _hex(n_bytes: int) -> str:
     return os.urandom(n_bytes).hex()
@@ -144,6 +144,28 @@ class _Node:
         self.metadata    = {}
         self.annotations = {}
 
+    def to_doc(self) -> dict:
+        """Serialise this node and its children as an inlined subsegment document."""
+        doc = {
+            'name':       self.name,
+            'id':         self.id,
+            'start_time': self.start,
+            'end_time':   self.end or time.time(),
+        }
+        if self.namespace:
+            doc['namespace'] = self.namespace
+        if self.error:
+            doc['error'] = True
+        if self.fault:
+            doc['fault'] = True
+        if self.annotations:
+            doc['annotations'] = self.annotations
+        if self.metadata:
+            doc['metadata'] = {'novamart': self.metadata}
+        if self.children:
+            doc['subsegments'] = [c.to_doc() for c in self.children]
+        return doc
+
 
 class AgentTracer:
     """
@@ -169,7 +191,7 @@ class AgentTracer:
         self.last_trace_id: Optional[str] = None
         self.last_published: bool = False
 
-    # ── configuration ────────────────────────────────────────────────────
+    # â”€â”€ configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     @property
     def enabled(self) -> bool:
         return _env_flag(ENV_TRACING_ENABLED, True)
@@ -183,7 +205,7 @@ class AgentTracer:
             self._client = boto3.client('xray', region_name=config.AWS_REGION)
         return self._client
 
-    # ── parent resolution ────────────────────────────────────────────────
+    # â”€â”€ parent resolution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _resolve_parent(self) -> Optional[_Node]:
         node = self._current.get()
         if node is not None and node.end is None:
@@ -214,7 +236,7 @@ class AgentTracer:
             # token created in another context (thread) - nothing to reset
             pass
 
-    # ── public API ───────────────────────────────────────────────────────
+    # â”€â”€ public API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     @contextmanager
     def trace_request(self, session_id: str, customer_id: str, request: str = ''):
         """Open the root segment for one customer request."""
@@ -296,84 +318,67 @@ class AgentTracer:
         finally:
             self._pop(node, token)
 
-    # X-Ray accepts a bounded number of documents per PutTraceSegments call.
-    _PUBLISH_BATCH = 5
-
-    def _segment_docs(self, root: _Node) -> list:
-        """
-        Flatten the node tree into one segment document per node.
-
-        Each document must be published separately and carry its own
-        ``parent_id``. Inlining children as ``subsegments`` inside a single
-        document (the previous approach) keeps the names visible but gives
-        every node the root segment's parentage, so the Service Map can only
-        draw a flat star - the real worker -> knowledge base chain is lost.
-        Downstream services are modelled by X-Ray as standalone segment
-        documents joined by parent_id, so that is what we emit here.
-        """
-        origin = 'AWS::AgentCore::Runtime' if os.environ.get('AGENT_RUNTIME_MODE') else None
-        docs: list = []
-
-        def emit(node: _Node, is_root: bool) -> None:
-            doc = {
-                'name':       node.name,
-                'id':         node.id,
-                'trace_id':   self._trace_id,
-                'start_time': node.start,
-                'end_time':   node.end or time.time(),
-            }
-            if node.namespace:
-                doc['namespace'] = node.namespace
-            if is_root:
-                doc['service'] = {'version': '1.0', 'name': SERVICE_NAME}
-                if origin:
-                    doc['origin'] = origin
-            else:
-                doc['type'] = 'subsegment'
-                if node.parent is not None:
-                    doc['parent_id'] = node.parent.id
-            if node.error:
-                doc['error'] = True
-            if node.fault:
-                doc['fault'] = True
-            if node.annotations:
-                doc['annotations'] = node.annotations
-            if node.metadata:
-                doc['metadata'] = {'novamart': node.metadata}
-            docs.append(json.dumps(doc))
-            for child in node.children:
-                emit(child, False)
-
-        emit(root, True)
-        return docs
-
     def _publish(self, root: _Node):
-        docs = self._segment_docs(root)
-        total = len(docs)
-        for start in range(0, total, self._PUBLISH_BATCH):
-            batch = docs[start:start + self._PUBLISH_BATCH]
-            try:
-                resp = self._xray().put_trace_segments(TraceSegmentDocuments=batch)
-                unprocessed = resp.get('UnprocessedTraceSegments', [])
-                if unprocessed:
-                    logger.warning("X-Ray rejected %d segment(s): %s",
-                                   len(unprocessed), unprocessed)
-                else:
-                    self.last_published = True
-            except Exception as exc:
-                logger.warning("X-Ray PutTraceSegments failed: %s", exc)
-                return
-        if self.last_published:
-            logger.info("trace %s published to X-Ray (%d segment documents)",
-                        self._trace_id, total)
+        """
+        Publish the trace as ONE segment document with children inlined.
+
+        Emitting a separate document per node (each with its own parent_id) was
+        tried and is worse: X-Ray re-assembles subsegment documents on ingest,
+        the parent_id references stop resolving, and the Service Map loses
+        nodes and grows unlabelled edges. Inlining keeps every node visible and
+        the map complete.
+
+        The trade-off is that the Service Map draws remote nodes as a fan-out
+        from the root, because an inlined subsegment is part of the parent
+        segment for service attribution. The true parent/child chain is still
+        visible in the trace detail view, which renders the nested tree.
+        """
+        doc = {
+            'name':       root.name,
+            'id':         root.id,
+            'trace_id':   self._trace_id,
+            'start_time': root.start,
+            'end_time':   root.end or time.time(),
+            'service':    {'version': '1.0', 'name': SERVICE_NAME},
+        }
+        if os.environ.get('AGENT_RUNTIME_MODE'):
+            doc['origin'] = 'AWS::AgentCore::Runtime'
+        if root.annotations:
+            doc['annotations'] = root.annotations
+        if root.metadata:
+            doc['metadata'] = {'novamart': root.metadata}
+        if root.fault:
+            doc['fault'] = True
+        if root.children:
+            doc['subsegments'] = [c.to_doc() for c in root.children]
+        body = json.dumps(doc)
+        if len(body) > 60_000:                      # X-Ray limit is 64 KB per document
+            _strip_metadata(root)
+            body = json.dumps(doc)
+        try:
+            resp = self._xray().put_trace_segments(TraceSegmentDocuments=[body])
+            unprocessed = resp.get('UnprocessedTraceSegments', [])
+            if unprocessed:
+                logger.warning("X-Ray rejected segment: %s", unprocessed)
+            else:
+                self.last_published = True
+                logger.info("trace %s published to X-Ray (%d bytes)", self._trace_id, len(body))
+        except Exception as exc:
+            logger.warning("X-Ray PutTraceSegments failed: %s", exc)
+
+
+def _strip_metadata(node: _Node):
+    node.metadata = {}
+    for c in node.children:
+        _strip_metadata(c)
 
 
 tracer = AgentTracer()
 
 
-# ─────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # TRACED @tool DECORATOR
-# ─────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _traced(fn):
     name = fn.__name__
@@ -433,9 +438,9 @@ def trace_kb_retrieval(kb_id: str):
         yield node
 
 
-# ─────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # CLOUDWATCH LOGS HANDLER
-# ─────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class CloudWatchLogHandler(logging.Handler):
     """Minimal CloudWatch Logs handler (no extra dependencies). Best-effort."""
@@ -554,9 +559,9 @@ def _safe_log_group() -> str:
         return ''
 
 
-# ─────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # TASK 6 - APPLY loggingConfiguration TO AWS
-# ─────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def validate_logging_configuration(logging_configuration: dict) -> None:
     """Raise ValueError if the dict does not have the expected shape."""
@@ -766,6 +771,6 @@ def print_trace_hint() -> None:
               "'Last 5 minutes':")
         print(f"  {service_map_url}")
         print("  Submission step: take a screenshot showing the full "
-              "NovaMart-Orchestrator → worker-agent call chain.")
+              "NovaMart-Orchestrator â†’ worker-agent call chain.")
     elif tracer.last_trace_id:
         print(f"\n  X-Ray trace {tracer.last_trace_id} was NOT published - see the warning above.")
