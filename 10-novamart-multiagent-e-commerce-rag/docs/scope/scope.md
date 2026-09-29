@@ -157,13 +157,13 @@ Build a CloudWatch dashboard showing agent invocation count over time, average r
 ### 11. Adversarial guardrail testing
 Run adversarial inputs against the guardrail including prompt injection attempts, competitor mentions, and legal threats, and document how each is handled with screenshots of blocked responses.
 **Done when:** Adversarial inputs are tested, blocked responses are captured in screenshots, and documentation shows how each input type is handled.
-- [ ] Build it: `/develop adversarial guardrail testing`
-   - [ ] Test prompt injection attempts against the guardrail
-   - [ ] Test competitor mentions against the guardrail
-   - [ ] Test legal threats against the guardrail
-   - [ ] Capture screenshots of blocked responses for each category
-   - [ ] Document how each input type is handled
-- [ ] Verify it: `/check verify adversarial guardrail testing`
+- [x] Build it: `/develop adversarial guardrail testing`
+   - [x] Test prompt injection attempts against the guardrail
+   - [x] Test competitor mentions against the guardrail
+   - [x] Test legal threats against the guardrail
+   - [x] Capture screenshots of blocked responses for each category
+   - [x] Document how each input type is handled
+- [x] Verify it: `/check verify adversarial guardrail testing`
 - [ ] Test it: `/test adversarial guardrail testing`
 
 ### 12. Frontend & Cognito auth
