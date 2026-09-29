@@ -40,7 +40,7 @@
         },
         {
           "name": "GUARDRAIL_VERSION",
-          "value": "9"
+          "value": "10"
         },
         {
           "name": "RETURNS_KB_ID",
