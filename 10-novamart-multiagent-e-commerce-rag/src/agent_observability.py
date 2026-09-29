@@ -144,27 +144,6 @@ class _Node:
         self.metadata    = {}
         self.annotations = {}
 
-    def to_doc(self) -> dict:
-        doc = {
-            'name':       self.name,
-            'id':         self.id,
-            'start_time': self.start,
-            'end_time':   self.end or time.time(),
-        }
-        if self.namespace:
-            doc['namespace'] = self.namespace
-        if self.error:
-            doc['error'] = True
-        if self.fault:
-            doc['fault'] = True
-        if self.annotations:
-            doc['annotations'] = self.annotations
-        if self.metadata:
-            doc['metadata'] = {'novamart': self.metadata}
-        if self.children:
-            doc['subsegments'] = [c.to_doc() for c in self.children]
-        return doc
-
 
 class AgentTracer:
     """
@@ -267,6 +246,32 @@ class AgentTracer:
             else:
                 logger.info("trace %s not sampled (rate=%.2f)", self._trace_id, self.sampling_rate)
 
+    @staticmethod
+    def _nearest_service_ancestor(node):
+        """
+        Walk up past local (non-service) subsegments to the nearest service node.
+
+        The X-Ray Service Map attributes each edge to the *immediate* parent's
+        service. A local subsegment (namespace=None) inherits the root service,
+        so a remote node parented to one collapses onto the root and the map
+        renders a flat star instead of the real chain:
+
+            PolicyAgent (remote) -> search_all_policies (local)
+                                 -> retrieve_x (local) -> KnowledgeBase:x (remote)
+
+        Re-parenting the remote node to PolicyAgent makes the map draw
+        PolicyAgent -> KnowledgeBase:x. Falls back to the original node when no
+        service ancestor exists (e.g. a KB call outside any agent).
+        """
+        seen = set()
+        current = node
+        while current is not None and id(current) not in seen:
+            if current.namespace:
+                return current
+            seen.add(id(current))
+            current = current.parent
+        return node
+
     @contextmanager
     def subsegment(self, name: str, namespace: Optional[str] = None,
                    fallback_ok: bool = False, metadata: Optional[dict] = None):
@@ -275,6 +280,8 @@ class AgentTracer:
         if parent is None:
             yield None
             return
+        if namespace == 'remote':
+            parent = self._nearest_service_ancestor(parent)
         node = _Node(name, namespace, parent, fallback_ok)
         if metadata:
             node.metadata = metadata
@@ -289,34 +296,76 @@ class AgentTracer:
         finally:
             self._pop(node, token)
 
-    def _publish(self, root: _Node):
-        doc = root.to_doc()
-        doc['trace_id'] = self._trace_id
-        doc['service']  = {'version': '1.0'}
-        doc['origin']   = 'AWS::AgentCore::Runtime' if os.environ.get('AGENT_RUNTIME_MODE') else None
-        if not doc['origin']:
-            del doc['origin']
-        body = json.dumps(doc)
-        if len(body) > 60_000:                      # X-Ray limit is 64 KB per document
-            _strip_metadata(root)
-            doc = root.to_doc(); doc['trace_id'] = self._trace_id
-            body = json.dumps(doc)
-        try:
-            resp = self._xray().put_trace_segments(TraceSegmentDocuments=[body])
-            unprocessed = resp.get('UnprocessedTraceSegments', [])
-            if unprocessed:
-                logger.warning("X-Ray rejected segment: %s", unprocessed)
+    # X-Ray accepts a bounded number of documents per PutTraceSegments call.
+    _PUBLISH_BATCH = 5
+
+    def _segment_docs(self, root: _Node) -> list:
+        """
+        Flatten the node tree into one segment document per node.
+
+        Each document must be published separately and carry its own
+        ``parent_id``. Inlining children as ``subsegments`` inside a single
+        document (the previous approach) keeps the names visible but gives
+        every node the root segment's parentage, so the Service Map can only
+        draw a flat star - the real worker -> knowledge base chain is lost.
+        Downstream services are modelled by X-Ray as standalone segment
+        documents joined by parent_id, so that is what we emit here.
+        """
+        origin = 'AWS::AgentCore::Runtime' if os.environ.get('AGENT_RUNTIME_MODE') else None
+        docs: list = []
+
+        def emit(node: _Node, is_root: bool) -> None:
+            doc = {
+                'name':       node.name,
+                'id':         node.id,
+                'trace_id':   self._trace_id,
+                'start_time': node.start,
+                'end_time':   node.end or time.time(),
+            }
+            if node.namespace:
+                doc['namespace'] = node.namespace
+            if is_root:
+                doc['service'] = {'version': '1.0', 'name': SERVICE_NAME}
+                if origin:
+                    doc['origin'] = origin
             else:
-                self.last_published = True
-                logger.info("trace %s published to X-Ray (%d bytes)", self._trace_id, len(body))
-        except Exception as exc:
-            logger.warning("X-Ray PutTraceSegments failed: %s", exc)
+                doc['type'] = 'subsegment'
+                if node.parent is not None:
+                    doc['parent_id'] = node.parent.id
+            if node.error:
+                doc['error'] = True
+            if node.fault:
+                doc['fault'] = True
+            if node.annotations:
+                doc['annotations'] = node.annotations
+            if node.metadata:
+                doc['metadata'] = {'novamart': node.metadata}
+            docs.append(json.dumps(doc))
+            for child in node.children:
+                emit(child, False)
 
+        emit(root, True)
+        return docs
 
-def _strip_metadata(node: _Node):
-    node.metadata = {}
-    for c in node.children:
-        _strip_metadata(c)
+    def _publish(self, root: _Node):
+        docs = self._segment_docs(root)
+        total = len(docs)
+        for start in range(0, total, self._PUBLISH_BATCH):
+            batch = docs[start:start + self._PUBLISH_BATCH]
+            try:
+                resp = self._xray().put_trace_segments(TraceSegmentDocuments=batch)
+                unprocessed = resp.get('UnprocessedTraceSegments', [])
+                if unprocessed:
+                    logger.warning("X-Ray rejected %d segment(s): %s",
+                                   len(unprocessed), unprocessed)
+                else:
+                    self.last_published = True
+            except Exception as exc:
+                logger.warning("X-Ray PutTraceSegments failed: %s", exc)
+                return
+        if self.last_published:
+            logger.info("trace %s published to X-Ray (%d segment documents)",
+                        self._trace_id, total)
 
 
 tracer = AgentTracer()
