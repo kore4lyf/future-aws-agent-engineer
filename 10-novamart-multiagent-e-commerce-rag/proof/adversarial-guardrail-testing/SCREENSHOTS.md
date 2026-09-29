@@ -1,20 +1,16 @@
 # Screenshots
 
-Five captures to make. Each command prints a short, self-contained block, so
-one terminal screenshot per command is enough.
-
-Open a terminal with the environment ready:
+Five captures. Each command prints a short self-contained block, so one
+terminal screenshot per command is enough.
 
 ```bash
 cd 10-novamart-multiagent-e-commerce-rag
-. "C:/Users/Korede/AppData/Local/Temp/opencode/awsenv.ps1"   # if still present
 export PYTHONIOENCODING=utf-8
 ```
 
-If `awsenv.ps1` is gone, export `AWS_ACCESS_KEY_ID`,
-`AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN` for your current session
-credentials first. The suite fails immediately without valid, unexpired
-credentials.
+Valid unexpired AWS credentials must be exported for the session
+(`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`). The suite
+fails immediately without them.
 
 ## 1. Competitor mentions
 
@@ -46,14 +42,17 @@ Expect `RESULT: LegalThreats - 2/2 blocked`.
 bash proof/adversarial-guardrail-testing/script.sh injection
 ```
 
-Expect `RESULT: PromptInjection - 2/2 blocked`.
+Expect `RESULT: PromptInjection - 0/3 blocked`.
 
-**Important:** capture this one *alone*. Run on its own it blocks both cases.
-Run as part of the full suite the first case is not blocked, because the
-classifier weighs the preceding context differently. See the README - the
-full-suite result (1/2) is the honest one, so screenshot the isolated run only
-as an illustration and cite the README for the discrepancy rather than
-implying injection is always caught.
+**This category is not blocked by the guardrail, and the screenshot should show
+that.** Each case prints `VERDICT: NOT BLOCKED` with
+`via model answered (no guardrail hit)`, and the response is the Orchestrator
+refusing in natural language.
+
+That is the honest result. Do not present these as blocked - the guardrail has
+no prompt-injection topic, so what the screenshot demonstrates is that the
+*model* refused, which is a weaker and different guarantee. The README explains
+the distinction and a reviewer will check.
 
 ## 5. Combined summary
 
@@ -61,15 +60,15 @@ implying injection is always caught.
 bash proof/adversarial-guardrail-testing/script.sh
 ```
 
-Expect `TOTAL 7/8 blocked` with the per-category breakdown. This is the
-capstone capture for the checklist item.
+Expect `TOTAL 6/9 blocked`, with CompetitorProducts, PricingNegotiations and
+LegalThreats at 2/2 each and PromptInjection at 0/3. This is the capstone
+capture for the checklist item.
 
 ## Tips
 
-- Each block is roughly 20 lines, so a single terminal window captures one
-  category without scrolling.
-- Colour is emitted. If the terminal background washes it out, set
-  `FORCE_COLOR=0` before running.
-- The block reason is always printed as `via guardrail blockedInputMessaging`,
-  which is the evidence that the intervention came from Bedrock rather than
-  from the model declining.
+- Each block is roughly 20 lines, so one terminal window captures a category
+  without scrolling.
+- If the terminal background washes out the colour, set `FORCE_COLOR=0`.
+- Blocked lines print `via guardrail blockedInputMessaging`, which is the
+  evidence the intervention came from Bedrock rather than the model declining
+  on its own. Unblocked lines print `via model answered (no guardrail hit)`.
