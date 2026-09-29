@@ -145,13 +145,22 @@ class _Node:
         self.annotations = {}
 
     def to_doc(self) -> dict:
-        """Serialise this node and its children as an inlined subsegment document."""
+        """
+        Serialise this node and its children as an inlined subsegment document.
+
+        parent_id is emitted explicitly. Nesting alone (a child appearing inside
+        a parent's 'subsegments' array) is not enough for the X-Ray console to
+        reconstruct the tree, so without it the trace view renders the nodes
+        flat even though the payload is well nested.
+        """
         doc = {
             'name':       self.name,
             'id':         self.id,
             'start_time': self.start,
             'end_time':   self.end or time.time(),
         }
+        if self.parent is not None:
+            doc['parent_id'] = self.parent.id
         if self.namespace:
             doc['namespace'] = self.namespace
         if self.error:
