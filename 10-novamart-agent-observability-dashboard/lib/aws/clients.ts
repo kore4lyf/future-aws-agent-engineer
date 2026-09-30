@@ -23,7 +23,7 @@ export function createAwsDeps(): AwsDeps {
   };
 }
 
-export function getAwsDeps(): AwsDeps {
+export function defaultDeps(): AwsDeps {
   cached ??= createAwsDeps();
   return cached;
 }

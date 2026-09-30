@@ -2,9 +2,9 @@ import "server-only";
 
 import { GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 
-import { getAwsDeps, type AwsDeps } from "@/lib/aws/clients";
+import { defaultDeps, type AwsDeps } from "@/lib/aws/clients";
 import { readConsoleConfig, READ_TIMEOUT_MS } from "@/lib/config";
-import { isAbortError, readFailure, readSuccess, type ReadResult } from "@/lib/aws/result";
+import { readFailure, readSuccess, toReadFailure, type ReadResult } from "@/lib/aws/result";
 
 export interface CallerIdentity {
   account: string;
@@ -18,44 +18,23 @@ export function maskAccount(account: string): string {
 }
 
 export async function readCallerIdentity(
-  deps: AwsDeps = getAwsDeps(),
+  makeDeps: () => AwsDeps = defaultDeps,
   timeoutMs: number = READ_TIMEOUT_MS,
 ): Promise<ReadResult<CallerIdentity>> {
-  const { region } = readConsoleConfig();
   const readAt = Date.now();
 
   try {
-    const response = await deps.sts.send(new GetCallerIdentityCommand({}), {
+    const region = readConsoleConfig().region;
+    const identity = await makeDeps().sts.send(new GetCallerIdentityCommand({}), {
       abortSignal: AbortSignal.timeout(timeoutMs),
     });
-    const account = response.Account ?? "";
+    const account = identity.Account ?? "";
 
     return readSuccess(
       { account, accountLabel: maskAccount(account), region },
       readAt,
     );
   } catch (error) {
-    if (isAbortError(error)) {
-      return readFailure(
-        {
-          code: "ReadTimeout",
-          message: `The caller identity read did not finish in ${timeoutMs}ms.`,
-          name: error.name,
-        },
-        readAt,
-      );
-    }
-
-    const awsError = error as { name?: string; message?: string; $metadata?: { requestId?: string } };
-
-    return readFailure(
-      {
-        code: awsError.name ?? "ReadFailed",
-        message: awsError.message ?? "The AWS read failed for an unknown reason.",
-        requestId: awsError.$metadata?.requestId,
-        name: awsError.name ?? "Error",
-      },
-      readAt,
-    );
+    return readFailure(toReadFailure(error, "The caller identity read", readAt, timeoutMs));
   }
 }

@@ -1,5 +1,6 @@
 import { readCallerIdentity } from "@/lib/aws/identity";
 import { readLatestLogActivity } from "@/lib/aws/logs";
+import type { ReadFailure, ReadResult } from "@/lib/aws/result";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,61 @@ function Row({ label, value }: { label: string; value: string }) {
       <span className="text-muted-foreground">{label}</span>
       <span className="font-mono text-xs">{value}</span>
     </div>
+  );
+}
+
+function ReadError({ error }: { error: ReadFailure }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-sm">
+        {error.message} <span className="text-muted-foreground">({error.code})</span>
+      </p>
+      <details className="text-xs">
+        <summary className="cursor-pointer text-muted-foreground">Technical detail</summary>
+        <dl className="mt-1 flex flex-col gap-0.5 font-mono">
+          <div className="flex gap-2">
+            <dt className="text-muted-foreground">code</dt>
+            <dd>{error.code}</dd>
+          </div>
+          {error.requestId ? (
+            <div className="flex gap-2">
+              <dt className="text-muted-foreground">request id</dt>
+              <dd>{error.requestId}</dd>
+            </div>
+          ) : null}
+          <div className="flex gap-2">
+            <dt className="text-muted-foreground">read at</dt>
+            <dd>{new Date(error.readAt).toISOString()}</dd>
+          </div>
+        </dl>
+      </details>
+    </div>
+  );
+}
+
+function Panel<T>({
+  title,
+  result,
+  children,
+}: {
+  title: string;
+  result: ReadResult<T>;
+  children: (data: T) => React.ReactNode;
+}) {
+  return (
+    <section>
+      <h2 className="mb-2 text-sm font-medium">{title}</h2>
+      {result.ok ? (
+        <div>
+          {children(result.data)}
+          <p className="text-muted-foreground pt-2 text-xs">
+            Read at {new Date(result.readAt).toISOString()}
+          </p>
+        </div>
+      ) : (
+        <ReadError error={result.error} />
+      )}
+    </section>
   );
 }
 
@@ -27,46 +83,31 @@ export default async function Home() {
         </p>
       </header>
 
-      <section>
-        <h2 className="mb-2 text-sm font-medium">Caller identity</h2>
-        {identity.ok ? (
+      <Panel title="Caller identity" result={identity}>
+        {(data) => (
           <>
-            <Row label="Account" value={identity.data.accountLabel} />
-            <Row label="Region" value={identity.data.region} />
+            <Row label="Account" value={data.accountLabel} />
+            <Row label="Region" value={data.region} />
           </>
-        ) : (
-          <p className="text-sm">
-            Identity unavailable. {identity.error.message}{" "}
-            <span className="text-muted-foreground">({identity.error.code})</span>
-          </p>
         )}
-      </section>
+      </Panel>
 
-      <section>
-        <h2 className="mb-2 text-sm font-medium">Log group activity</h2>
-        {activity.ok ? (
+      <Panel title="Log group activity" result={activity}>
+        {(data) => (
           <>
-            <Row label="Log group" value={activity.data.logGroup} />
-            <Row
-              label="Latest stream"
-              value={activity.data.latestStreamName ?? "none found"}
-            />
+            <Row label="Log group" value={data.logGroup} />
+            <Row label="Latest stream" value={data.latestStreamName ?? "no log streams"} />
             <Row
               label="Last log event"
               value={
-                activity.data.lastEventTime
-                  ? new Date(activity.data.lastEventTime).toISOString()
+                data.lastEventTime
+                  ? new Date(data.lastEventTime).toISOString()
                   : "no log events found"
               }
             />
           </>
-        ) : (
-          <p className="text-sm">
-            Log group unavailable. {activity.error.message}{" "}
-            <span className="text-muted-foreground">({activity.error.code})</span>
-          </p>
         )}
-      </section>
+      </Panel>
     </main>
   );
 }

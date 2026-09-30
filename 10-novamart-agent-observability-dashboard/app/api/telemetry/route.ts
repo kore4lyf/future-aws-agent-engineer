@@ -13,9 +13,12 @@ export async function GET() {
 
   return NextResponse.json(
     {
-      readAt: new Date().toISOString(),
-      identity: identity.ok ? identity.data : identity.error,
-      logActivity: activity.ok ? activity.data : activity.error,
+      identity: identity.ok
+        ? { ok: true, data: identity.data, readAt: identity.readAt }
+        : identity,
+      logActivity: activity.ok
+        ? { ok: true, data: activity.data, readAt: activity.readAt }
+        : activity,
     },
     { headers: { "cache-control": "no-store" } },
   );
