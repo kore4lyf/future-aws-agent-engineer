@@ -16,7 +16,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "NovaMart Agent Operations Console",
-  description: "Read only view of the NovaMart agent's CloudWatch and X Ray telemetry.",
+  description:
+    "Read only view of the NovaMart agent's CloudWatch and X Ray telemetry.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

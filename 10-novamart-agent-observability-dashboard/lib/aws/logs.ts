@@ -4,7 +4,12 @@ import { DescribeLogStreamsCommand } from "@aws-sdk/client-cloudwatch-logs";
 
 import { defaultDeps, type AwsDeps } from "@/lib/aws/clients";
 import { readConsoleConfig, READ_TIMEOUT_MS } from "@/lib/config";
-import { readFailure, readSuccess, toReadFailure, type ReadResult } from "@/lib/aws/result";
+import {
+  readFailure,
+  readSuccess,
+  toReadFailure,
+  type ReadResult,
+} from "@/lib/aws/result";
 
 export interface LogGroupActivity {
   logGroup: string;
@@ -41,6 +46,8 @@ export async function readLatestLogActivity(
       readAt,
     );
   } catch (error) {
-    return readFailure(toReadFailure(error, "The log group read", readAt, timeoutMs));
+    return readFailure(
+      toReadFailure(error, "The log group read", readAt, timeoutMs),
+    );
   }
 }

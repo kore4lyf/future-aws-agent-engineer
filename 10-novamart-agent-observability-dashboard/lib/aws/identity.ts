@@ -4,7 +4,12 @@ import { GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 
 import { defaultDeps, type AwsDeps } from "@/lib/aws/clients";
 import { readConsoleConfig, READ_TIMEOUT_MS } from "@/lib/config";
-import { readFailure, readSuccess, toReadFailure, type ReadResult } from "@/lib/aws/result";
+import {
+  readFailure,
+  readSuccess,
+  toReadFailure,
+  type ReadResult,
+} from "@/lib/aws/result";
 
 export interface CallerIdentity {
   account: string;
@@ -25,9 +30,12 @@ export async function readCallerIdentity(
 
   try {
     const region = readConsoleConfig().region;
-    const identity = await makeDeps().sts.send(new GetCallerIdentityCommand({}), {
-      abortSignal: AbortSignal.timeout(timeoutMs),
-    });
+    const identity = await makeDeps().sts.send(
+      new GetCallerIdentityCommand({}),
+      {
+        abortSignal: AbortSignal.timeout(timeoutMs),
+      },
+    );
     const account = identity.Account ?? "";
 
     return readSuccess(
@@ -35,6 +43,8 @@ export async function readCallerIdentity(
       readAt,
     );
   } catch (error) {
-    return readFailure(toReadFailure(error, "The caller identity read", readAt, timeoutMs));
+    return readFailure(
+      toReadFailure(error, "The caller identity read", readAt, timeoutMs),
+    );
   }
 }

@@ -17,10 +17,13 @@ function ReadError({ error }: { error: ReadFailure }) {
   return (
     <div className="flex flex-col gap-1">
       <p className="text-sm">
-        {error.message} <span className="text-muted-foreground">({error.code})</span>
+        {error.message}{" "}
+        <span className="text-muted-foreground">({error.code})</span>
       </p>
       <details className="text-xs">
-        <summary className="cursor-pointer text-muted-foreground">Technical detail</summary>
+        <summary className="cursor-pointer text-muted-foreground">
+          Technical detail
+        </summary>
         <dl className="mt-1 flex flex-col gap-0.5 font-mono">
           <div className="flex gap-2">
             <dt className="text-muted-foreground">code</dt>
@@ -77,7 +80,9 @@ export default async function Home() {
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 p-8">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">NovaMart Agent Operations Console</h1>
+        <h1 className="text-2xl font-semibold">
+          NovaMart Agent Operations Console
+        </h1>
         <p className="text-muted-foreground text-sm">
           Foundation check: these values are read from AWS on every request.
         </p>
@@ -96,7 +101,10 @@ export default async function Home() {
         {(data) => (
           <>
             <Row label="Log group" value={data.logGroup} />
-            <Row label="Latest stream" value={data.latestStreamName ?? "no log streams"} />
+            <Row
+              label="Latest stream"
+              value={data.latestStreamName ?? "no log streams"}
+            />
             <Row
               label="Last log event"
               value={
