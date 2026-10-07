@@ -1,0 +1,24 @@
+{
+  "name": "novamart-customer-support-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NovaMart customer support chat frontend with AWS Cognito auth and Amazon Bedrock AgentCore Runtime integration.",
+  "workspaces": [
+    "frontend",
+    "gateway"
+  ],
+  "scripts": {
+    "dev": "concurrently -n web,api -c cyan,magenta \"npm:dev:web\" \"npm:dev:api\"",
+    "dev:web": "npm run dev --workspace frontend",
+    "dev:api": "npm run dev --workspace gateway",
+    "build": "npm run build --workspace frontend && npm run build --workspace gateway",
+    "typecheck": "npm run typecheck --workspace frontend && npm run typecheck --workspace gateway",
+    "test": "npm run test --workspace frontend && npm run test --workspace gateway"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
