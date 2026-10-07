@@ -80,6 +80,16 @@ RUNTIME_REQUIREMENTS = [
     'bedrock-agentcore>=0.1',
     'boto3>=1.42',
     'python-dotenv>=1.0',
+    'rpds-py==2026.5.1',
+    'opentelemetry-api==1.44.0',
+    'opentelemetry-sdk==1.44.0',
+    'opentelemetry-instrumentation==0.65b0',
+    'opentelemetry-instrumentation-threading==0.65b0',
+    'opentelemetry-distro==0.65b0',
+    'opentelemetry-semantic-conventions==0.65b0',
+    'opentelemetry-util-genai==1.1b0',
+    'opentelemetry-processor-baggage==0.65b0',
+    'websockets==15.0.1',
 ]
 RUNTIME_PROJECT_FILES = [
     os.path.join(SRC_DIR, 'agent_orchestrator.py'),
