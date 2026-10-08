@@ -84,13 +84,11 @@ TRANSACTION_SEARCH_SPAN_LOG_GROUP = 'aws/spans'
 TRANSACTION_SEARCH_APPLICATION_LOG_GROUP = '/aws/application-signals/data'
 TRANSACTION_SEARCH_POLICY_NAME = 'NovaMartTransactionSearchXRayAccess'
 
-# Routing tool -> (X-Ray node name) : these become separate nodes on the map
-_AGENT_NODE_FOR_TOOL = {
-    'route_to_inventory_agent':     'InventoryAgent',
-    'route_to_policy_agent':        'PolicyAgent',
-    'route_to_refund_agent':        'RefundAgent',
-    'route_to_communication_agent': 'CommunicationAgent',
-}
+# Routing tool -> (X-Ray node name): canonical contract shared with the
+# observability dashboard (src/telemetry/contract.py). Only the four
+# route_to_* tools open remote subsegments; every other tool is
+# intentionally unmapped — see the contract module docstring.
+from telemetry.contract import AGENT_NODE_FOR_TOOL as _AGENT_NODE_FOR_TOOL
 # Tools whose subsegment may adopt children opened from other threads
 # (see _resolve_parent). search_all_policies fans out to worker threads.
 _FANOUT_TOOLS = {'search_all_policies'}

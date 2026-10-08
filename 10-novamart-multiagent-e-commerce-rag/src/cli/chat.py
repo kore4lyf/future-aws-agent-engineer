@@ -12,6 +12,7 @@ import sys
 import os
 import time
 import uuid
+import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -20,6 +21,13 @@ from agent_utils import _C, _trace_print, _trace_writer, _real_stdout, _strip_xm
 from agent_observability import setup_logging, tracer, flush_logs, print_trace_hint
 from workflow.state import _read_workflow_state, trace
 from workflow.graph import build_agent_graph
+from deploy.guardrail import BLOCKED_INPUT_MESSAGE, BLOCKED_OUTPUT_MESSAGE
+from telemetry.guardrails import (
+    clear_invocation_id,
+    process_captured_responses,
+    set_invocation_id,
+)
+from telemetry.contract import format_guardrail_line
 
 
 __all__ = ['TEST_CUSTOMERS', 'run_chat', 'run_invoke']
@@ -100,11 +108,15 @@ def run_chat() -> None:
         # -- Install proxy, run orchestrator (traced), restore stdout
         trace.new_turn()
         sys.stdout = _trace_writer
+        invocation_id = session_id
+        set_invocation_id(invocation_id)
         try:
             with tracer.trace_request(session_id, customer_id, user_input):
                 response = orchestrator(prompt)
         finally:
             sys.stdout = _real_stdout   # always restore, even on exception
+            events = process_captured_responses(invocation_id)
+            clear_invocation_id()
 
         elapsed = time.time() - t0_turn
 
@@ -112,6 +124,15 @@ def run_chat() -> None:
         final_state = _read_workflow_state(session_id) or {}
         comm_result = final_state.get('communication_agent', '')
         text = _strip_xml_tags(comm_result or str(response))
+        if BLOCKED_INPUT_MESSAGE in text or BLOCKED_OUTPUT_MESSAGE in text:
+            if not events:
+                logging.getLogger('novamart.observability').info(
+                    format_guardrail_line(
+                        policy='Unknown', action='BLOCK',
+                        trace_id=tracer.last_trace_id,
+                        category='UNKNOWN', source='fallback',
+                    )
+                )
 
         # -- DynamoDB workflow state summary
         trace.summary(session_id, elapsed)

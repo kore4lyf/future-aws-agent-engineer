@@ -26,11 +26,12 @@ def _apply_guardrail(agents: list) -> None:
     """
     Attach the Bedrock Guardrail (Task 3) to every agent's BedrockModel.
 
-    Guardrails are enforced per model invocation, so once GUARDRAIL_ID /
-    GUARDRAIL_VERSION are known (in .env locally, as runtime environment
-    variables when deployed) every agent in the graph runs behind the
-    guardrail - no change to the agents themselves is needed.
+    Also instruments each model client to capture raw Converse responses
+    for guardrail trace extraction, and installs Strands hooks for
+    telemetry emission.
     """
+    from telemetry.guardrails import instrument_bedrock_model, install_agent_hooks
+
     guardrail_id      = config.GUARDRAIL_ID
     guardrail_version = config.GUARDRAIL_VERSION
     if not guardrail_id or not guardrail_version:
@@ -49,6 +50,9 @@ def _apply_guardrail(agents: list) -> None:
         if model is not None and hasattr(model, 'update_config'):
             model.update_config(guardrail_id=guardrail_id,
                                 guardrail_version=guardrail_version)
+        if model is not None:
+            instrument_bedrock_model(model)
+        install_agent_hooks(agent)
 
 
 def build_agent_graph(verbose: bool = False) -> "Agent":

@@ -13,6 +13,7 @@ import os
 import json
 import uuid
 import threading
+import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -21,6 +22,13 @@ from agent_utils import _strip_xml_tags
 from workflow.state import _read_workflow_state
 from workflow.graph import build_agent_graph
 from session.dynamodb_session import DynamoDBSessionManager
+from deploy.guardrail import BLOCKED_INPUT_MESSAGE, BLOCKED_OUTPUT_MESSAGE
+from telemetry.guardrails import (
+    clear_invocation_id,
+    process_captured_responses,
+    set_invocation_id,
+)
+from telemetry.contract import format_guardrail_line
 
 
 __all__ = ['run_serve']
@@ -65,11 +73,13 @@ def run_serve() -> None:
     def invoke(payload, context=None):
         payload     = payload or {}
         prompt      = payload.get('prompt') or payload.get('message') or ''
-        customer_id = payload.get('customer_id') or 'CUST-001'
+        customer_id = payload.get('customer_id')
         session_id  = payload.get('session_id') or (
             getattr(context, 'session_id', None) or uuid.uuid4().hex)[:8]
         if not prompt:
             return {'error': "payload must include 'prompt'"}
+        if not customer_id:
+            return {'error': "payload must include 'customer_id'"}
 
         orchestrator, session_mgr = _orchestrator()
         previous = session_mgr.load_session(session_id) or []
@@ -77,11 +87,26 @@ def run_serve() -> None:
             orchestrator.messages = previous + orchestrator.messages
 
         enriched = f"[Session ID: {session_id}] [Customer ID: {customer_id}] {prompt}"
-        with tracer.trace_request(session_id, customer_id, prompt):
-            response = orchestrator(enriched)
+        invocation_id = session_id
+        set_invocation_id(invocation_id)
+        try:
+            with tracer.trace_request(session_id, customer_id, prompt):
+                response = orchestrator(enriched)
+        finally:
+            events = process_captured_responses(invocation_id)
+            clear_invocation_id()
 
         state = _read_workflow_state(session_id) or {}
-        text  = _strip_xml_tags(state.get('communication_agent', '') or str(response))
+        text = _strip_xml_tags(state.get('communication_agent', '') or str(response))
+        if BLOCKED_INPUT_MESSAGE in text or BLOCKED_OUTPUT_MESSAGE in text:
+            if not events:
+                logging.getLogger('novamart.observability').info(
+                    format_guardrail_line(
+                        policy='Unknown', action='BLOCK',
+                        trace_id=tracer.last_trace_id,
+                        category='UNKNOWN', source='fallback',
+                    )
+                )
         flush_logs()
         return {'result': text, 'session_id': session_id, 'customer_id': customer_id,
                 'trace_id': tracer.last_trace_id}
