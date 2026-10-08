@@ -1016,5 +1016,39 @@ class TestLiveInvoke(unittest.TestCase):
                       'the answer does not include the order total')
 
 
+class TestRuntimePackagingCompleteness(unittest.TestCase):
+    """Every src/ package that staged code can import must be staged.
+
+    Regression test for the cold-start outage where `telemetry/` was
+    imported at module scope (agent_observability, serving.serve,
+    workflow.graph) but absent from RUNTIME_PACKAGE_DIRS, so every
+    invoke died with `ModuleNotFoundError: No module named 'telemetry'`
+    before the 30s init budget. Runs offline.
+    """
+
+    def test_all_local_packages_are_staged(self):
+        src_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src')
+        discovered = sorted(
+            name for name in os.listdir(src_dir)
+            if os.path.isdir(os.path.join(src_dir, name))
+            and os.path.isfile(os.path.join(src_dir, name, '__init__.py'))
+        )
+        missing = [p for p in discovered if p not in agentcore_cli.RUNTIME_PACKAGE_DIRS]
+        self.assertEqual(
+            missing, [],
+            f"src/ packages missing from RUNTIME_PACKAGE_DIRS {agentcore_cli.RUNTIME_PACKAGE_DIRS}: "
+            f"{missing} - the deployed runtime would fail at import with ModuleNotFoundError",
+        )
+
+    def test_staged_tree_imports_cleanly(self):
+        staged = agentcore_cli.stage_runtime_code()
+        for pkg in agentcore_cli.RUNTIME_PACKAGE_DIRS:
+            self.assertTrue(
+                os.path.isdir(os.path.join(staged, pkg)),
+                f"staged package '{pkg}' missing under {staged}",
+            )
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
