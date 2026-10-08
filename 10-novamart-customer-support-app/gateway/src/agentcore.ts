@@ -37,6 +37,7 @@ export async function invokeAgent(input: {
   message: string;
   runtimeSessionId: string;
   userId: string;
+  customerId: string;
 }): Promise<AgentReply> {
   // Mock mode answers locally so the chat flow can be exercised without AWS.
   if (config.mockMode) {
@@ -51,9 +52,11 @@ export async function invokeAgent(input: {
     agentRuntimeArn: config.agentRuntimeArn,
     qualifier: config.agentQualifier,
     runtimeSessionId: input.runtimeSessionId,
-    // Lets the agent scope work to the end user rather than sharing one identity.
     runtimeUserId: input.userId,
-    payload: new TextEncoder().encode(JSON.stringify({ prompt: input.message })),
+    payload: new TextEncoder().encode(JSON.stringify({
+      prompt: input.message,
+      customer_id: input.customerId,
+    })),
   });
 
   let response;

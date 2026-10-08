@@ -30,3 +30,7 @@ Thumbs.db
 
 # Git
 .git/
+
+
+# Node Modules
+node_modules/

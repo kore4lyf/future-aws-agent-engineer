@@ -1,6 +1,6 @@
 # Multi-Agent Systems Protocol Integration
 
-Twenty-two projects covering sequential, parallel, conditional, hierarchical, shared-state, saga, RAG, governance, production deployment, and gateway patterns on Amazon Bedrock.
+Sixteen projects covering sequential, parallel, conditional, hierarchical, shared-state, saga, and RAG agent orchestration on Amazon Bedrock.
 
 ## Projects (chronological order)
 
@@ -22,12 +22,6 @@ Twenty-two projects covering sequential, parallel, conditional, hierarchical, sh
 | 14 | `14-ecommerce-checkout-saga` | Checkout saga, tool-owned barrier increments | ✅ 21 tests |
 | 15 | `15-research-assistant-rag` | Parallel multi-KB RAG, aggregate/dedup, grounded synthesis | ✅ unit tests |
 | 16 | `16-clinical-literature-rag` | Clinical dual-KB RAG, structured 3-section synthesis | ✅ unit tests |
-| 17 | `17-healthcare-guardrails` | Six-layer governance: kill switch, rate limit, Bedrock guardrails, LLM-as-judge | ✅ unit tests |
-| 18 | `18-trading-compliance` | Seven-layer governance: stricter kill switch, output guardrail, compliance agent, LLM-as-judge | ✅ unit tests |
-| 19 | `19-deployment-walkthrough` | Production deployment: AgentCore Runtime, CF exports, gated pipeline, monitoring, cost estimation | ✅ unit tests |
-| 20 | `20-vectrabank-architecture` | VPC runtime, 4-tier agents, monitoring strategy, cost estimate, operational runbooks | ✅ unit tests |
-| 21 | `21-supply-chain-gateway` | Gateway pattern: dynamic tool discovery, Lambda backends, centralized observability | ✅ unit tests |
-| 22 | `22-analytics-gateway` | Exercise: analytics agent with 4 Lambda backends, deterministic routing, dynamic stock_price registration | ✅ unit tests |
 
 Each project has its own `pyproject.toml`, tests under `test/`, and `.env.example`; READMEs exist except for 06–09.
 
@@ -103,36 +97,6 @@ uv run python main.py
 cd 16-clinical-literature-rag
 uv run --with pytest --with boto3 pytest -q
 uv run python main.py
-
-# Healthcare Guardrails (needs HEALTHCARE_GUARDRAIL_ID in .env)
-cd 17-healthcare-guardrails
-uv run --with pytest --with boto3 --with python-dotenv python -m pytest test/ -q
-uv run python main.py
-
-# Trading Compliance (needs TRADING_GUARDRAIL_ID in .env)
-cd 18-trading-compliance
-uv run --with pytest --with boto3 --with python-dotenv python -m pytest test/ -q
-uv run python main.py
-
-# Deployment Walkthrough (deploy stack first)
-cd 19-deployment-walkthrough
-python infrastructure/deploy_stack.py
-uv run python deployment_walkthrough.py
-
-# VectraBank Architecture (deploy stack first)
-cd 20-vectrabank-architecture
-python infrastructure/deploy_stack.py
-uv run python vectrabank_architecture.py
-
-# Supply Chain Gateway (deploy stack first)
-cd 21-supply-chain-gateway
-python infrastructure/deploy_stack.py
-uv run python supply_chain_gateway.py
-
-# Analytics Gateway (deploy stack first)
-cd 22-analytics-gateway
-python infrastructure/deploy_stack.py
-uv run python analytics_gateway.py
 ```
 
-Load AWS credentials from your session environment (never commit them). CloudFormation stacks used by the hybrid routers, shared-state, saga, RAG, guardrail, deployment, and gateway demos: `lesson-05-demo-routing`, `lesson-05-exercise-routing`, `lesson-06-demo-shared-state`, `lesson-06-exercise-shared-state`, `lesson-07-demo-saga`, `lesson-07-exercise-saga`, `lesson-08-demo-rag`, `lesson-08-exercise-rag`, `lesson-09-demo-guardrails`, `lesson-09-exercise-guardrails`, `lesson-10-demo-runtime`, `lesson-10-exercise-runtime`, `lesson-11-demo-gateway`, `lesson-11-exercise-gateway`.
+Load AWS credentials from your session environment (never commit them). CloudFormation stacks used by the hybrid routers, shared-state, saga, and RAG demos: `lesson-05-demo-routing`, `lesson-05-exercise-routing`, `lesson-06-demo-shared-state`, `lesson-06-exercise-shared-state`, `lesson-07-demo-saga`, `lesson-07-exercise-saga`, `lesson-08-demo-rag`, `lesson-08-exercise-rag`.

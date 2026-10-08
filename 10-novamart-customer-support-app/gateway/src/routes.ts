@@ -94,6 +94,7 @@ router.post('/sessions/messages', requireAuth, async (req, res, next) => {
       message: message.trim(),
       runtimeSessionId,
       userId: user.userId,
+      customerId: user.userId,
     });
 
     const assistantMessage = {
