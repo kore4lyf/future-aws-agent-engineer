@@ -1,5 +1,6 @@
 # Environment variables
 .env
+*.local
 
 # AWS config
 .aws/
