@@ -43,7 +43,7 @@ fi
 CATEGORY="${1:-all}"
 
 "$PYTHON" - "$CATEGORY" <<'PY'
-import os, sys, io, time
+import os, sys, io, time, logging
 
 sys.path.insert(0, "src")
 from dotenv import load_dotenv
@@ -54,6 +54,12 @@ import agent_orchestrator as ao
 import agent_observability as obs
 from agent_utils import _strip_xml_tags
 from deploy.guardrail import BLOCKED_INPUT_MESSAGE, BLOCKED_OUTPUT_MESSAGE
+from telemetry.guardrails import (
+    clear_invocation_id,
+    process_captured_responses,
+    set_invocation_id,
+)
+from telemetry.contract import format_guardrail_line
 
 WANTED = (sys.argv[1] or "all").lower()
 FILTER = {
@@ -115,6 +121,10 @@ if not os.environ.get("AGENT_VERBOSE"):
 agent = ao.build_agent_graph()
 sys.stdout = _real_stdout
 
+# Ship logs to CloudWatch, otherwise the dashboard (whose only source is
+# the log group) can never see these runs.
+obs.setup_logging(to_cloudwatch=True)
+
 print("=" * 72)
 print("ADVERSARIAL GUARDRAIL TESTING - %s" % (FILTER or "ALL CATEGORIES"))
 print("=" * 72)
@@ -130,18 +140,38 @@ for category, customer, attack in CASES:
     try:
         if not os.environ.get("AGENT_VERBOSE"):
             sys.stdout = io.StringIO()
-        with obs.tracer.trace_request(session, customer, attack):
-            raw = agent(prompt)
-        sys.stdout = _real_stdout
+        set_invocation_id(session)
+        try:
+            with obs.tracer.trace_request(session, customer, attack):
+                raw = agent(prompt)
+        finally:
+            sys.stdout = _real_stdout
+            events = process_captured_responses(session)
+            clear_invocation_id()
         reply, error = _strip_xml_tags(str(raw)), ""
     except Exception as exc:
         sys.stdout = _real_stdout
+        try:
+            clear_invocation_id()
+        except Exception:
+            pass
+        events = []
         reply, error = "", "%s: %s" % (type(exc).__name__, str(exc)[:160])
 
     if error:
         blocked, how = True, "exception"
     elif BLOCKED_INPUT_MESSAGE in reply or BLOCKED_OUTPUT_MESSAGE in reply:
         blocked, how = True, "guardrail blockedInputMessaging"
+        if not events:
+            # Blocked text but no captured trace assessment: still emit one
+            # canonical line so the dashboard counts the intervention.
+            logging.getLogger('novamart.observability').info(
+                format_guardrail_line(
+                    policy='Unknown', action='BLOCK',
+                    trace_id=obs.tracer.last_trace_id,
+                    category='UNKNOWN', source='fallback',
+                )
+            )
     else:
         blocked, how = False, "model answered (no guardrail hit)"
 
@@ -156,6 +186,7 @@ for category, customer, attack in CASES:
         print("RESPONSE : %s" % (reply[:300].replace("\n", " ")))
     print("VERDICT  : %s" % ("BLOCKED" if blocked else "NOT BLOCKED"))
     print("          via %s" % how)
+    print("TELEMETRY: %d guardrail event(s) emitted" % len(events))
 
 print()
 print("=" * 72)
@@ -175,4 +206,6 @@ else:
     print()
     print("  %-22s %d/%d blocked" % ("TOTAL", hit, len(rows)))
 print("=" * 72)
+obs.flush_logs()
+print("Logs flushed to CloudWatch - allow ~60s for ingestion before refreshing the dashboard.")
 PY

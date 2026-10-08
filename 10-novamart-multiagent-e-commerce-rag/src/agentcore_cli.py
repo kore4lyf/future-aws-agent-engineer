@@ -102,8 +102,12 @@ RUNTIME_PROJECT_FILES = [
 # agent_orchestrator.py is a thin facade: at import time it re-exports from these
 # packages, so the deployed runtime cannot start without them. Staging only the
 # flat file list above makes every invoke fail with
-# `ModuleNotFoundError: No module named 'workflow'`.
-RUNTIME_PACKAGE_DIRS = ['agents', 'workflow', 'deploy', 'serving', 'cli', 'session']
+# `ModuleNotFoundError: No module named 'workflow'`. Keep this list in sync
+# with every top-level package under src/ that staged code imports at module
+# scope (omitting one breaks the runtime at cold start - see
+# tests/test_agentcore_runtime_deploy.py::TestRuntimePackagingCompleteness).
+RUNTIME_PACKAGE_DIRS = ['agents', 'workflow', 'deploy', 'serving', 'cli', 'session',
+                        'telemetry']
 # Directories never worth shipping inside the runtime package.
 RUNTIME_EXCLUDE_DIRS = {'__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache'}
 
