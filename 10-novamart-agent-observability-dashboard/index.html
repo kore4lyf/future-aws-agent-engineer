@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Agent Observability Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: { sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'] },
+        colors: {
+          surface: { DEFAULT: '#0b1120', raised: '#111a2e', border: '#1e2a44' }
+        }
+      }
+    }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  body { background-color: #070c18; }
+  .card { background: linear-gradient(180deg, #111a2e 0%, #0d1424 100%); border: 1px solid #1e2a44; }
+  .card-glow { box-shadow: 0 0 0 1px rgba(34,197,94,.06), 0 12px 32px -16px rgba(0,0,0,.8); }
+  .pulse { animation: pulse-dot 2s cubic-bezier(0.4,0,0.6,1) infinite; }
+  @keyframes pulse-dot { 0%,100% { opacity:1; transform: scale(1);} 50% { opacity:.35; transform: scale(.8);} }
+  .fade-up { animation: fadeUp .5s ease-out both; }
+  @keyframes fadeUp { from { opacity:0; transform: translateY(8px);} to { opacity:1; transform:none;} }
+</style>
+</head>
+<body class="min-h-screen text-slate-200 antialiased">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-20 border-b border-surface-border bg-surface/80 backdrop-blur">
+    <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+      <div class="flex items-center gap-3">
+        <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 font-bold text-slate-950">NW</div>
+        <div>
+          <h1 class="text-lg font-semibold tracking-tight text-white sm:text-xl">AI Agent Observability Dashboard</h1>
+          <p class="text-xs text-slate-400">NovaMart Multi-Agent Support &middot; CloudWatch telemetry &middot; us-east-1</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="flex items-center gap-1.5">
+          <label for="windowSelect" class="text-xs text-slate-400">Window</label>
+          <select id="windowSelect" class="cursor-pointer rounded-lg border border-surface-border bg-surface-raised px-2.5 py-1.5 text-xs font-medium text-slate-200 outline-none transition hover:border-slate-500 focus:border-emerald-500/50">
+            <option value="24h">24 hrs</option>
+            <option value="custom">Custom days</option>
+            <option value="1w">1 week</option>
+            <option value="1M">1 month</option>
+            <option value="3M">3 months</option>
+            <option value="6M">6 months</option>
+            <option value="12M">12 months</option>
+          </select>
+          <div id="daysWrap" class="hidden flex items-center gap-1.5">
+            <input id="daysInput" type="number" min="2" max="6" value="3"
+              class="w-14 rounded-lg border border-surface-border bg-surface-raised px-2 py-1.5 text-xs font-medium text-slate-200 outline-none transition [appearance:textfield] placeholder:text-slate-500 focus:border-emerald-500/50 [&::-webkit-inner-spin-button]:appearance-none"
+              title="2 to 6 days" />
+            <span class="text-xs text-slate-400">days</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <label for="yearSelect" class="text-xs text-slate-400">Year</label>
+          <select id="yearSelect" class="cursor-pointer rounded-lg border border-surface-border bg-surface-raised px-2.5 py-1.5 text-xs font-medium text-slate-200 outline-none transition hover:border-slate-500 focus:border-emerald-500/50">
+            <option value="">Any</option>
+          </select>
+        </div>
+        <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-surface-border bg-surface-raised px-3 py-1.5 text-xs text-slate-300">
+          <input id="liveToggle" type="checkbox" checked class="h-3.5 w-3.5 accent-emerald-400" />
+          Auto-refresh
+        </label>
+        <button id="refreshBtn" class="rounded-lg border border-surface-border bg-surface-raised px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-slate-500 hover:text-white">Refresh</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+
+    <!-- Stat row -->
+    <section class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div class="card card-glow fade-up rounded-xl p-5" style="animation-delay:.02s">
+        <div class="flex items-start justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Total Invocations</p>
+            <p id="statInvocations" class="mt-2 text-3xl font-semibold tabular-nums text-white">—</p>
+          </div>
+          <span id="invWindowBadge" class="rounded-lg bg-sky-500/10 px-2 py-1 text-xs font-medium text-sky-300">&mdash;24h</span>
+        </div>
+        <div class="mt-3 flex items-center gap-2 text-xs">
+          <span id="deltaInvocations" class="font-medium text-emerald-400">—</span>
+          <span id="vsPrevInvocations" class="text-slate-500">vs previous 24h</span>
+        </div>
+      </div>
+
+      <div class="card card-glow fade-up rounded-xl p-5" style="animation-delay:.08s">
+        <div class="flex items-start justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Avg Latency</p>
+            <p class="mt-2 text-3xl font-semibold tabular-nums text-white"><span id="statLatency">—</span><span class="ml-1 text-base font-normal text-slate-400">ms</span></p>
+          </div>
+          <span class="rounded-lg bg-violet-500/10 px-2 py-1 text-xs font-medium text-violet-300">p95 <span id="statP95">—</span>ms</span>
+        </div>
+        <div class="mt-3 flex items-center gap-2 text-xs">
+          <span id="deltaLatency" class="font-medium text-emerald-400">—</span>
+          <span id="vsPrevLatency" class="text-slate-500">vs previous 24h</span>
+        </div>
+      </div>
+
+      <div class="card card-glow fade-up rounded-xl p-5" style="animation-delay:.14s">
+        <div class="flex items-start justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Guardrail Violations</p>
+            <p class="mt-2 text-3xl font-semibold tabular-nums text-white"><span id="statViolations">—</span><span class="ml-1 text-base font-normal text-slate-400">blocked</span></p>
+          </div>
+          <span class="rounded-lg bg-rose-500/10 px-2 py-1 text-xs font-medium text-rose-300"><span id="statBlockRate">—</span>% block rate</span>
+        </div>
+        <div class="mt-3 flex items-center gap-2 text-xs">
+          <span id="deltaViolations" class="font-medium text-rose-400">—</span>
+          <span id="vsPrevViolations" class="text-slate-500">vs previous 24h</span>
+        </div>
+      </div>
+    </section>
+
+    <div id="warningsBox" class="mt-4 hidden"></div>
+
+    <!-- Charts -->
+    <section class="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div class="card card-glow fade-up rounded-xl p-5 lg:col-span-2" style="animation-delay:.2s">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <h2 class="text-sm font-semibold text-white">Invocation Count Over Time</h2>
+            <p id="invocationSubtitle" class="text-xs text-slate-400">Requests per hour, last 24 hours</p>
+          </div>
+          <div id="lineLegend" class="flex gap-3 text-xs text-slate-400"></div>
+        </div>
+        <div class="mt-4 h-64"><canvas id="invocationChart"></canvas></div>
+      </div>
+
+      <div class="card card-glow fade-up rounded-xl p-5" style="animation-delay:.26s">
+        <div>
+          <h2 class="text-sm font-semibold text-white">Guardrail Trigger Frequency</h2>
+          <p class="text-xs text-slate-400">Policy violations by type</p>
+        </div>
+        <div class="mt-4 h-56"><canvas id="guardrailChart"></canvas></div>
+        <ul id="guardrailLegend" class="mt-4 space-y-2 text-xs"></ul>
+        <div class="mt-4">
+          <button id="recentViolationsBtn" type="button"
+            class="rounded-lg border border-surface-border bg-surface-raised px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-slate-500 hover:text-white">
+            Recent violations (<span id="recentViolationsCount">0</span>)
+          </button>
+        </div>
+        <dialog id="recentViolationsDialog"
+          class="card max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl p-5 text-slate-200 backdrop:bg-black/70">
+          <div class="flex items-center justify-between gap-4">
+            <h3 class="text-sm font-semibold text-white">Recent violations</h3>
+            <button id="recentViolationsClose" type="button" autofocus
+              class="rounded-lg border border-surface-border bg-surface-raised px-2.5 py-1 text-xs font-medium text-slate-300 transition hover:border-slate-500 hover:text-white">
+              Close
+            </button>
+          </div>
+          <p class="mt-1 text-xs text-slate-400">Paste a trace id into CloudWatch Logs or X-Ray to pull the full record.</p>
+          <ul id="guardrailRecent" class="mt-3 max-h-80 space-y-1.5 overflow-y-auto text-xs"></ul>
+        </dialog>
+        <div id="guardrailNotice" class="mt-4 hidden rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+          <p class="text-xs font-medium text-amber-300">No telemetry source</p>
+          <p id="guardrailNoticeText" class="mt-1 text-xs leading-relaxed text-amber-200/70"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div class="card card-glow fade-up rounded-xl p-5 lg:col-span-2" style="animation-delay:.32s">
+        <div>
+          <h2 class="text-sm font-semibold text-white">Average Latency per Agent Type</h2>
+          <p class="text-xs text-slate-400">Mean and p95 response time in milliseconds</p>
+        </div>
+        <div class="mt-4 h-72"><canvas id="latencyChart"></canvas></div>
+      </div>
+
+      <div class="card card-glow fade-up rounded-xl p-5" style="animation-delay:.38s">
+        <div>
+          <h2 class="text-sm font-semibold text-white">Agent Breakdown</h2>
+          <p class="text-xs text-slate-400">Invocations, error rate and share of traffic</p>
+        </div>
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="text-slate-400">
+              <tr class="border-b border-surface-border">
+                <th class="py-2 font-medium">Agent</th>
+                <th class="py-2 text-right font-medium">Invocations</th>
+                <th class="py-2 text-right font-medium">Avg ms</th>
+                <th class="py-2 text-right font-medium">Errors</th>
+                <th class="py-2 text-right font-medium">Share</th>
+              </tr>
+            </thead>
+            <tbody id="agentTable" class="tabular-nums"></tbody>
+          </table>
+        </div>
+        <div class="mt-5 rounded-lg border border-surface-border bg-slate-900/60 p-3">
+          <p class="text-xs font-medium text-slate-200">Top failure reason</p>
+          <p id="topFailure" class="mt-1 text-xs text-slate-400">—</p>
+        </div>
+      </div>
+    </section>
+
+    <p class="mt-6 text-center text-xs text-slate-500">
+      <span id="footerSource">Telemetry source: connecting&hellip;</span> &middot; last updated <span id="lastUpdated">—</span>
+    </p>
+    <p class="mt-2 text-center text-xs text-slate-600">
+      Fresh blocks take ~1&ndash;2 min to appear: CloudWatch ingestion (~60s) plus a 60s server cache.
+      Auto-refresh polls every 30s; use Refresh for the latest window.
+    </p>
+  </main>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------------------------------------------------------------------
+  // Mock telemetry generator (self-contained, no network required)
+  // ---------------------------------------------------------------------
+  function generateMockData() {
+    // Deterministic-ish realism: seeded PRNG so charts stay coherent
+    // between refreshes while still looking organic.
+    let seed = Math.floor(Math.random() * 1e9);
+    function rand() {
+      seed = (seed * 1664525 + 1013904223) % 4294967296;
+      return seed / 4294967296;
+    }
+    function jitter(base, pct) { return base * (1 + (rand() - 0.5) * 2 * pct); }
+
+    const AGENTS = [
+      { name: 'Routing Agent',        role: 'orchestrator', base: 620, latency: 240,  weight: 1.00 },
+      { name: 'RAG Agent',            role: 'knowledge',    base: 940, latency: 1180, weight: 0.86 },
+      { name: 'Support Agent',        role: 'support',      base: 780, latency: 1420, weight: 0.92 },
+      { name: 'Refund Agent',         role: 'transaction',  base: 410, latency: 2050, weight: 0.74 },
+      { name: 'Inventory Agent',      role: 'tooling',      base: 360, latency: 690,  weight: 0.68 },
+      { name: 'Code Agent',           role: 'codegen',      base: 180, latency: 3260, weight: 0.55 }
+    ];
+
+    // 24 hourly buckets ending at the current hour
+    const hours = [];
+    const now = new Date();
+    now.setMinutes(0, 0, 0);
+    for (let i = 23; i >= 0; i--) {
+      const t = new Date(now.getTime() - i * 3600 * 1000);
+      hours.push(t);
+    }
+
+    // Diurnal traffic shape: quiet overnight, twin peaks late morning + evening
+    function trafficShape(hour) {
+      const morning = Math.exp(-Math.pow(hour - 10.5, 2) / 12);
+      const evening = Math.exp(-Math.pow(hour - 18.0, 2) / 14);
+      const overnight = hour < 6 || hour > 22 ? 0.28 : 0.55;
+      return overnight + 1.15 * morning + 1.0 * evening;
+    }
+
+    const series = {};
+    AGENTS.forEach(function (a) {
+      series[a.name] = hours.map(function (h) {
+        return Math.max(0, Math.round(jitter(a.base * trafficShape(h.getHours()) * a.weight, 0.22)));
+      });
+    });
+
+    // Totals per hour + successful/failed split
+    const invocationByHour = hours.map(function (_, i) {
+      return AGENTS.reduce(function (sum, a) { return sum + series[a.name][i]; }, 0);
+    });
+    const successByHour = invocationByHour.map(function (v) {
+      const errRate = jitter(0.031, 0.4);
+      return Math.round(v * (1 - errRate));
+    });
+
+    // Guardrail violations
+    const guardrailTypes = [
+      { name: 'Prompt Injection',   color: '#f43f5e', base: 128 },
+      { name: 'PII Leakage',        color: '#f59e0b', base: 74 },
+      { name: 'Competitor Mention', color: '#a855f7', base: 46 },
+      { name: 'Jailbreak Attempt',  color: '#38bdf8', base: 31 },
+      { name: 'Off-Topic',          color: '#64748b', base: 22 }
+    ];
+    const guardrails = guardrailTypes.map(function (g) {
+      return { name: g.name, color: g.color, count: Math.round(jitter(g.base, 0.35)) };
+    });
+
+    // Per-agent latency + errors
+    const agents = AGENTS.map(function (a) {
+      const avg = Math.round(jitter(a.latency, 0.18));
+      const p95 = Math.round(avg * jitter(2.15, 0.12));
+      const invocations = series[a.name].reduce(function (s, v) { return s + v; }, 0);
+      const errorRate = jitter(a.role === 'codegen' ? 0.062 : 0.028, 0.45);
+      return {
+        name: a.name,
+        role: a.role,
+        avg: avg,
+        p95: p95,
+        invocations: invocations,
+        errors: Math.max(1, Math.round(invocations * errorRate))
+      };
+    });
+
+    const totalInvocations = agents.reduce(function (s, a) { return s + a.invocations; }, 0);
+    const totalErrors = agents.reduce(function (s, a) { return s + a.errors; }, 0);
+    const totalGuardrails = guardrails.reduce(function (s, g) { return s + g.count; }, 0);
+
+    // Weighted average latency across all invocations
+    const avgLatency = Math.round(
+      agents.reduce(function (s, a) { return s + a.avg * a.invocations; }, 0) / totalInvocations
+    );
+    const p95Latency = Math.round(
+      agents.reduce(function (s, a) { return s + a.p95 * a.invocations; }, 0) / totalInvocations
+    );
+
+    const failureReasons = [
+      'Tool timeout on inventory.lookup (3 retries exhausted)',
+      'Bedrock throttling — InferenceTokenLimit exceeded',
+      'Guardrail blocked: prompt injection signature',
+      'DynamoDB session read/write conflict',
+      'RAG retrieval returned empty result set'
+    ];
+    const topFailure = failureReasons[Math.floor(rand() * failureReasons.length)];
+
+    return {
+      hours: hours,
+      labels: hours.map(function (h) {
+        return h.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+      }),
+      series: series,
+      invocationByHour: invocationByHour,
+      successByHour: successByHour,
+      agents: agents,
+      guardrails: guardrails,
+      stats: {
+        totalInvocations: totalInvocations,
+        avgLatency: avgLatency,
+        p95Latency: p95Latency,
+        totalErrors: totalErrors,
+        totalGuardrails: totalGuardrails,
+        blockRate: (totalGuardrails / totalInvocations * 100).toFixed(1)
+      },
+      deltas: {
+        invocations: Number(jitter(6.4, 1.8).toFixed(1)),
+        latency: Number(jitter(-3.2, 1.5).toFixed(1)),
+        violations: Number(jitter(11.5, 1.5).toFixed(1))
+      },
+      topFailure: topFailure,
+      generatedAt: new Date()
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Formatting helpers
+  // ---------------------------------------------------------------------
+  const fmt = new Intl.NumberFormat('en-US');
+  function signed(v, suffix) {
+    const sign = v >= 0 ? '+' : '';
+    return sign + v + (suffix || '');
+  }
+
+  // ---------------------------------------------------------------------
+  // Chart.js global theming
+  // ---------------------------------------------------------------------
+  Chart.defaults.color = '#94a3b8';
+  Chart.defaults.font.family = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+  Chart.defaults.font.size = 11;
+  Chart.defaults.plugins.legend.labels.usePointStyle = true;
+  Chart.defaults.plugins.legend.labels.boxWidth = 8;
+  Chart.defaults.plugins.tooltip.backgroundColor = '#0b1120';
+  Chart.defaults.plugins.tooltip.borderColor = '#1e2a44';
+  Chart.defaults.plugins.tooltip.borderWidth = 1;
+  Chart.defaults.plugins.tooltip.padding = 10;
+  Chart.defaults.plugins.tooltip.titleColor = '#f8fafc';
+  Chart.defaults.plugins.tooltip.bodyColor = '#cbd5e1';
+  Chart.defaults.plugins.tooltip.cornerRadius = 6;
+
+  const charts = {};
+
+  function makeGradient(ctx, from, to) {
+    const g = ctx.createLinearGradient(0, 0, 0, 260);
+    g.addColorStop(0, from);
+    g.addColorStop(1, to);
+    return g;
+  }
+
+  function destroyIfAny(key) {
+    if (charts[key]) { charts[key].destroy(); charts[key] = null; }
+  }
+
+  // ---------------------------------------------------------------------
+  // Renderers
+  // ---------------------------------------------------------------------
+  function renderStats(d) {
+    document.getElementById('statInvocations').textContent = fmt.format(d.stats.totalInvocations);
+    document.getElementById('statLatency').textContent = fmt.format(d.stats.avgLatency);
+    document.getElementById('statP95').textContent = fmt.format(d.stats.p95Latency);
+    document.getElementById('statViolations').textContent = fmt.format(d.stats.totalGuardrails);
+    document.getElementById('statBlockRate').textContent = d.stats.blockRate;
+
+    setDelta('deltaInvocations', d.deltas.invocations, '%', true);
+    setDelta('deltaLatency', d.deltas.latency, '%', false);   // lower latency is good
+    setDelta('deltaViolations', d.deltas.violations, '%', false);
+  }
+
+  function setDelta(id, value, suffix, upIsGood) {
+    const el = document.getElementById(id);
+    const good = upIsGood ? value >= 0 : value <= 0;
+    el.textContent = signed(value, suffix) + ' vs prev';
+    el.className = 'font-medium ' + (good ? 'text-emerald-400' : 'text-rose-400');
+  }
+
+  function renderInvocationChart(d) {
+    const ctx = document.getElementById('invocationChart').getContext('2d');
+    destroyIfAny('invocation');
+
+    charts.invocation = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: d.labels,
+        datasets: [
+          {
+            label: 'Total requests',
+            data: d.invocationByHour,
+            borderColor: '#38bdf8',
+            backgroundColor: makeGradient(ctx, 'rgba(56,189,248,.28)', 'rgba(56,189,248,0)'),
+            borderWidth: 2,
+            fill: true,
+            tension: 0.35,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointHoverBackgroundColor: '#38bdf8'
+          },
+          {
+            label: 'Successful',
+            data: d.successByHour,
+            borderColor: '#34d399',
+            borderWidth: 1.5,
+            borderDash: [4, 3],
+            fill: false,
+            tension: 0.35,
+            pointRadius: 0,
+            pointHoverRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { display: false } },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { maxTicksLimit: 12, maxRotation: 0, autoSkip: true }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(30,42,68,.9)', drawTicks: false },
+            border: { display: false },
+            ticks: { padding: 8 }
+          }
+        }
+      }
+    });
+
+    document.getElementById('lineLegend').innerHTML = [
+      '<span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-sky-400"></span>Total requests</span>',
+      '<span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-emerald-400"></span>Successful</span>'
+    ].join('');
+  }
+
+  function renderLatencyChart(d) {
+    const ctx = document.getElementById('latencyChart').getContext('2d');
+    destroyIfAny('latency');
+
+    const sorted = d.agents.slice().sort(function (a, b) { return a.avg - b.avg; });
+
+    charts.latency = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: sorted.map(function (a) { return a.name; }),
+        datasets: [
+          {
+            label: 'Avg latency',
+            data: sorted.map(function (a) { return a.avg; }),
+            backgroundColor: 'rgba(56,189,248,.75)',
+            hoverBackgroundColor: 'rgba(56,189,248,.95)',
+            borderColor: '#0ea5e9',
+            borderWidth: 1,
+            borderRadius: 6,
+            barPercentage: 0.7,
+            categoryPercentage: 0.75
+          },
+          {
+            label: 'p95 latency',
+            data: sorted.map(function (a) { return a.p95; }),
+            backgroundColor: 'rgba(167,139,250,.45)',
+            hoverBackgroundColor: 'rgba(167,139,250,.7)',
+            borderColor: '#8b5cf6',
+            borderWidth: 1,
+            borderRadius: 6,
+            barPercentage: 0.7,
+            categoryPercentage: 0.75
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'top',
+            align: 'end',
+            labels: { padding: 14 }
+          },
+          tooltip: {
+            callbacks: {
+              label: function (c) { return c.dataset.label + ': ' + fmt.format(c.parsed.y) + ' ms'; }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: false } },
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: 'milliseconds', color: '#64748b' },
+            grid: { color: 'rgba(30,42,68,.9)', drawTicks: false },
+            border: { display: false },
+            ticks: { padding: 8, callback: function (v) { return fmt.format(v); } }
+          }
+        }
+      }
+    });
+  }
+
+function renderGuardrailChart(d) {
+    var available = d.guardrailsAvailable && d.guardrails && d.guardrails.length > 0;
+    var notice = document.getElementById('guardrailNotice');
+    var noticeText = document.getElementById('guardrailNoticeText');
+    var canvas = document.getElementById('guardrailChart');
+    var legend = document.getElementById('guardrailLegend');
+
+    if (!available) {
+      if (charts.guardrail) { charts.guardrail.destroy(); charts.guardrail = null; }
+      canvas.classList.add('hidden');
+      legend.innerHTML = '';
+      document.getElementById('guardrailRecent').innerHTML = '';
+      document.getElementById('recentViolationsCount').textContent = '0';
+      notice.classList.remove('hidden');
+      noticeText.textContent = d.guardrailsNote ||
+        'No guardrail interventions were recorded in this window.';
+      return;
+    }
+
+    notice.classList.add('hidden');
+    canvas.classList.remove('hidden');
+
+    var recent = document.getElementById('guardrailRecent');
+    var items = d.recentGuardrails || [];
+    document.getElementById('recentViolationsCount').textContent = String(items.length);
+    recent.innerHTML = items.length ? items.map(function (r) {
+      var trace = r.trace || '';
+      var shortTrace = trace.length > 20 ? trace.slice(0, 20) + '…' : trace;
+      var when = (r.timestamp || '').slice(0, 19).replace('T', ' ');
+      return '<li class="flex items-center justify-between gap-2">' +
+        '<span class="font-medium text-slate-200">' + escapeHtml(r.policy || 'Unknown') + '</span>' +
+        '<span class="tabular-nums text-slate-500" title="' + escapeHtml(trace) + '">' + escapeHtml(shortTrace) + (when ? ' · ' + escapeHtml(when) : '') + '</span>' +
+      '</li>';
+    }).join('') : '<li class="text-slate-500">No individual violations in this window.</li>';
+
+    var ctx = canvas.getContext('2d');
+    destroyIfAny('guardrail');
+
+    charts.guardrail = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: d.guardrails.map(function (g) { return g.name; }),
+        datasets: [{
+          data: d.guardrails.map(function (g) { return g.count; }),
+          backgroundColor: d.guardrails.map(function (g) { return g.color; }),
+          borderColor: '#0d1424',
+          borderWidth: 3,
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '62%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (c) {
+                var total = c.dataset.data.reduce(function (a, b) { return a + b; }, 0);
+                var pct = (c.parsed / total * 100).toFixed(1);
+                return c.label + ': ' + fmt.format(c.parsed) + ' (' + pct + '%)';
+              }
+            }
+          }
+        }
+      },
+      plugins: [{
+        id: 'centerText',
+        afterDraw: function (chart) {
+          var total = chart.data.datasets[0].data.reduce(function (a, b) { return a + b; }, 0);
+          var x = chart.getDatasetMeta(0).data[0].x;
+          var y = chart.getDatasetMeta(0).data[0].y;
+          var ctx = chart.ctx;
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#f8fafc';
+          ctx.font = '600 22px ui-sans-serif, system-ui, sans-serif';
+          ctx.fillText(fmt.format(total), x, y - 6);
+          ctx.fillStyle = '#64748b';
+          ctx.font = '500 11px ui-sans-serif, system-ui, sans-serif';
+          ctx.fillText('blocked', x, y + 14);
+          ctx.restore();
+        }
+      }]
+    });
+
+    const total = d.guardrails.reduce(function (s, g) { return s + g.count; }, 0);
+    document.getElementById('guardrailLegend').innerHTML = d.guardrails.map(function (g) {
+      var pct = (g.count / total * 100).toFixed(1);
+      return '<li class="flex items-center justify-between gap-2">' +
+        '<span class="flex items-center gap-2 text-slate-300"><span class="h-2 w-2 rounded-full" style="background:' + g.color + '"></span>' + g.name + '</span>' +
+        '<span class="tabular-nums text-slate-400"><span class="text-slate-200">' + fmt.format(g.count) + '</span> &middot; ' + pct + '%</span>' +
+      '</li>';
+    }).join('');
+  }
+
+  function renderTable(d) {
+    var total = d.stats.totalInvocations;
+    var sorted = d.agents.slice().sort(function (a, b) { return b.invocations - a.invocations; });
+    document.getElementById('agentTable').innerHTML = sorted.map(function (a) {
+      var errPct = a.invocations ? (a.errors / a.invocations * 100).toFixed(1) : '0.0';
+      var share = a.share !== undefined ? a.share.toFixed(1) : (total ? (a.invocations / total * 100).toFixed(1) : '0.0');
+      var errColor = parseFloat(errPct) > 5 ? 'text-rose-400' : 'text-slate-400';
+      return '<tr class="border-b border-surface-border/60">' +
+        '<td class="py-2.5 pr-2 font-medium text-slate-200">' + a.name + '</td>' +
+        '<td class="py-2.5 text-right text-slate-300">' + fmt.format(a.invocations) + '</td>' +
+        '<td class="py-2.5 text-right text-slate-300">' + fmt.format(a.avg) + '</td>' +
+        '<td class="py-2.5 text-right ' + errColor + '">' + errPct + '%</td>' +
+        '<td class="py-2.5 text-right text-slate-400">' + share + '%</td>' +
+      '</tr>';
+    }).join('');
+
+    var failure = d.topFailure || 'No failures recorded in this window.';
+    if (d.latencySource) {
+      failure += '  ·  latency from ' + d.latencySource;
+    }
+    document.getElementById('topFailure').textContent = failure;
+  }
+
+  // ---------------------------------------------------------------------
+  // API adapter
+  // ---------------------------------------------------------------------
+
+  function normalize(payload) {
+    var s = payload.stats || {};
+    var w = payload.window || {};
+    return {
+      source: payload.source || 'mock',
+      window: {
+        key: w.key || '24h',
+        label: w.label || 'last 24 hours',
+        short: w.short || '24h',
+        vs_prev: w.vs_prev || 'previous 24h',
+        bucket: w.bucket || 'hour',
+        year: w.year || null
+      },
+      labels: payload.labels || [],
+      invocationByHour: payload.invocations || [],
+      successByHour: payload.successful || [],
+      agents: (payload.agents || []).map(function (a) {
+        return {
+          name: a.name,
+          avg: a.avg_ms,
+          p95: a.p95_ms,
+          invocations: a.invocations,
+          errors: a.errors
+        };
+      }),
+      guardrails: payload.guardrails || [],
+      recentGuardrails: payload.recent_guardrails || [],
+      guardrailsAvailable: payload.guardrails_available !== false,
+      guardrailsNote: payload.guardrails_note || '',
+      stats: {
+        totalInvocations: s.total_invocations || 0,
+        avgLatency: s.avg_latency_ms || 0,
+        p95Latency: s.p95_latency_ms || 0,
+        totalGuardrails: s.guardrail_total || 0,
+        blockRate: s.block_rate || 0
+      },
+      deltas: {
+        invocations: (payload.deltas || {}).invocations || 0,
+        latency: (payload.deltas || {}).latency || 0,
+        violations: (payload.deltas || {}).violations || 0
+      },
+      topFailure: payload.top_failure || '',
+      latencySource: payload.latency_source || '',
+      warnings: payload.warnings || [],
+      notices: payload.notices || [],
+      generatedAt: new Date(payload.generated_at || Date.now())
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Boot + live refresh against the local proxy
+  // ---------------------------------------------------------------------
+
+  var POLL_MS = 30000;
+  var timer = null;
+
+  function currentWindowKey() {
+    var select = document.getElementById('windowSelect');
+    if (select.value !== 'custom') return select.value;
+    var input = document.getElementById('daysInput');
+    var days = parseInt(input.value, 10);
+    if (isNaN(days)) days = 3;
+    days = Math.max(2, Math.min(6, days));
+    input.value = String(days);
+    return days + 'd';
+  }
+
+  function telemetryUrl() {
+    var params = ['window=' + encodeURIComponent(currentWindowKey())];
+    var year = document.getElementById('yearSelect').value;
+    if (year) params.push('year=' + encodeURIComponent(year));
+    return '/api/telemetry?' + params.join('&');
+  }
+
+  function populateYears() {
+    var select = document.getElementById('yearSelect');
+    var current = new Date().getFullYear();
+    for (var y = current; y > current - 5; y--) {
+      var opt = document.createElement('option');
+      opt.value = String(y);
+      opt.textContent = String(y);
+      select.appendChild(opt);
+    }
+  }
+
+  function startPolling() {
+    if (timer) clearInterval(timer);
+    timer = setInterval(function () {
+      if (document.hidden) return;
+      if (!document.getElementById('liveToggle').checked) return;
+      loadTelemetry();
+    }, POLL_MS);
+  }
+
+  function loadTelemetry() {
+    return fetch(telemetryUrl(), { headers: { Accept: 'application/json' } })
+      .then(function (res) {
+        if (!res.ok) throw new Error('proxy returned HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (payload) {
+        if (payload.error) throw new Error(payload.error + ': ' + (payload.message || ''));
+        renderAll(normalize(payload));
+      })
+      .catch(function (err) {
+        var mock = normalize(generateMockData());
+        mock.source = 'offline';
+        renderAll(mock);
+        renderWarnings(['Live telemetry unreachable (' + err.message + '). Showing simulated data.']);
+      });
+  }
+
+  function renderWindowMeta(d) {
+    var w = d.window || {};
+    var vsPrev = 'vs ' + (w.vs_prev || 'previous 24h');
+    document.getElementById('invWindowBadge').innerHTML = '&mdash;' + escapeHtml(w.short || '24h');
+    document.getElementById('vsPrevInvocations').textContent = vsPrev;
+    document.getElementById('vsPrevLatency').textContent = vsPrev;
+    document.getElementById('vsPrevViolations').textContent = vsPrev;
+    var subtitle = 'Requests per ' + (w.bucket || 'hour') + ', ' + (w.label || 'last 24 hours');
+    if (w.year) subtitle += ' (' + w.year + ')';
+    document.getElementById('invocationSubtitle').textContent = subtitle;
+  }
+
+  function renderAll(d) {
+    renderWindowMeta(d);
+    renderStats(d);
+    renderInvocationChart(d);
+    renderLatencyChart(d);
+    renderGuardrailChart(d);
+    renderTable(d);
+    renderWarnings(d.warnings, d.notices);
+    var footer = document.getElementById('footerSource');
+    if (d.source === 'aws') {
+      footer.textContent = 'Live telemetry from AWS CloudWatch';
+      footer.className = 'text-emerald-500/80';
+    } else if (d.source === 'offline') {
+      footer.textContent = 'Proxy unreachable — simulated telemetry';
+      footer.className = 'text-amber-500/80';
+    } else {
+      footer.textContent = 'Simulated telemetry for demonstration purposes';
+      footer.className = '';
+    }
+    document.getElementById('lastUpdated').textContent =
+      d.generatedAt instanceof Date ? d.generatedAt.toLocaleTimeString() : d.generatedAt;
+  }
+
+  function renderWarnings(warnings, notices) {
+    var box = document.getElementById('warningsBox');
+    var parts = [];
+    if (warnings && warnings.length) {
+      parts.push(
+        '<div class="card rounded-xl border-amber-500/30 bg-amber-500/5 p-4">' +
+          '<p class="text-xs font-semibold text-amber-300">Telemetry gaps</p>' +
+          '<ul class="mt-2 space-y-1 pl-5 text-xs leading-relaxed text-amber-200/70">' +
+            warnings.map(function (w) { return '<li class="list-disc">' + escapeHtml(w) + '</li>'; }).join('') +
+          '</ul>' +
+        '</div>'
+      );
+    }
+    if (notices && notices.length) {
+      parts.push(
+        '<div class="card rounded-xl border-sky-500/20 bg-sky-500/5 p-4">' +
+          '<p class="text-xs font-semibold text-sky-300">Window status</p>' +
+          '<ul class="mt-2 space-y-1 pl-5 text-xs leading-relaxed text-sky-200/70">' +
+            notices.map(function (n) { return '<li class="list-disc">' + escapeHtml(n) + '</li>'; }).join('') +
+          '</ul>' +
+        '</div>'
+      );
+    }
+    if (!parts.length) { box.innerHTML = ''; box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    box.innerHTML = '<div class="mt-4 grid grid-cols-1 gap-3">' + parts.join('') + '</div>';
+  }
+
+  function escapeHtml(text) {
+    return String(text == null ? '' : text)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  populateYears();
+
+  document.getElementById('windowSelect').addEventListener('change', function () {
+    document.getElementById('daysWrap').classList.toggle('hidden', this.value !== 'custom');
+    if (this.value === 'custom') document.getElementById('daysInput').focus();
+    loadTelemetry();
+  });
+  document.getElementById('daysInput').addEventListener('change', loadTelemetry);
+  document.getElementById('yearSelect').addEventListener('change', loadTelemetry);
+  document.getElementById('refreshBtn').addEventListener('click', loadTelemetry);
+
+  var recentDialog = document.getElementById('recentViolationsDialog');
+  document.getElementById('recentViolationsBtn').addEventListener('click', function () {
+    if (typeof recentDialog.showModal === 'function' && !recentDialog.open) {
+      recentDialog.showModal();
+    }
+  });
+  document.getElementById('recentViolationsClose').addEventListener('click', function () {
+    recentDialog.close();
+  });
+  recentDialog.addEventListener('click', function (ev) {
+    if (ev.target === recentDialog) recentDialog.close();
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) startPolling();
+  });
+
+  loadTelemetry();
+  startPolling();
+})();
+</script>
+</body>
+</html>

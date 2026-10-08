@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Agent Observability Dashboard
 
-## Getting Started
+Standalone single-page dashboard for the NovaMart multi-agent support
+system.
 
-First, run the development server:
+## Run
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+python server.py
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open http://127.0.0.1:8787.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How it gets data
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+A local Python proxy (boto3, no browser credentials) queries AWS and
+serves JSON. No credentials are ever shipped to the page.
 
-## Learn More
+| Panel | AWS source |
+|---|---|
+| Invocations over time | CloudWatch Logs Insights — `trace ... started` lines |
+| Errors over time | Same log group — ERROR/WARNING lines |
+| Avg latency per agent | X-Ray subsegments in `aws/spans` (Transaction Search) |
+| Runtime invocations / latency / errors | CloudWatch metrics, namespace `AWS/Bedrock-AgentCore` |
+| Guardrails | Structured `GUARDRAIL policy=...` log line (see below) |
 
-To learn more about Next.js, take a look at the following resources:
+## Guardrail instrumentation
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Bedrock Guardrails publish no CloudWatch metric and AgentCore emits no
+guardrail signal, so the agent logs one canonical line per intervention:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+GUARDRAIL policy=<Name> category=<Category> action=<BLOCK|ANONYMIZE> source=<input|output|fallback> trace=<id>
+```
 
-## Deploy on Vercel
+Do NOT add per-factory hooks in `src/agents/orchestrator/tools.py`.
+Telemetry is centralized: `src/telemetry/guardrails.py::emit_guardrail_event`
+builds the line via `telemetry.contract.format_guardrail_line`, and the
+`scenarios` / `serve` / `chat` entry points emit the same canonical line
+for the fallback path (blocked text but no captured trace event). The
+dashboard query parses both the canonical 5-field line and legacy 3-field
+lines (`GUARDRAIL policy=X action=Y trace=Z`), so old logs keep working.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Shared contract
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`contract.py` (here) is a byte-identical mirror of
+`../10-novamart-multiagent-e-commerce-rag/src/telemetry/contract.py`
+(canonical). It pins the tool→node map, the span node labels, the
+guardrail line format, and the KB-span aggregation rule. Edit the
+canonical file, copy it over verbatim, and run
+`python -m unittest tests.test_contract_parity` to confirm.
+
+## Diagnostics
+
+`/api/diagnose` lists your AWS identity, which log groups exist, and
+which metrics are published. Run that first if the dashboard shows
+unavailable.
+
+## Source precedence
+
+Per-agent latency: X-Ray subsegments → traced `tool done` lines →
+AgentCore runtime metrics (single row). Nothing is invented when a
+source is missing.
