@@ -96,9 +96,18 @@ class GuardrailEvent:
 # ---------------------------------------------------------------------------
 
 def _extract_from_assessment(
-    assessment: dict[str, Any], source: str
+    assessment: dict[str, Any] | list[Any], source: str
 ) -> list[GuardrailEvent]:
+    """Normalize one guardrail assessment (dict or list) into events."""
     events: list[GuardrailEvent] = []
+
+    if isinstance(assessment, list):
+        for item in assessment:
+            events.extend(_extract_from_assessment(item, source=source))
+        return events
+
+    if not isinstance(assessment, dict):
+        return events
 
     for topic in assessment.get("topicPolicy", {}).get("topics", []):
         if topic.get("action") == "BLOCKED":
@@ -161,8 +170,9 @@ def extract_guardrail_events(response: dict[str, Any]) -> list[GuardrailEvent]:
     if isinstance(input_assessments, dict):
         for assessment in input_assessments.values():
             events.extend(_extract_from_assessment(assessment, source="input"))
-    elif isinstance(input_assessments, dict):
-        events.extend(_extract_from_assessment(input_assessments, source="input"))
+    elif isinstance(input_assessments, list):
+        for assessment in input_assessments:
+            events.extend(_extract_from_assessment(assessment, source="input"))
 
     output_assessments = trace.get("outputAssessments", {})
     if not output_assessments:
@@ -170,8 +180,9 @@ def extract_guardrail_events(response: dict[str, Any]) -> list[GuardrailEvent]:
     if isinstance(output_assessments, dict):
         for assessment in output_assessments.values():
             events.extend(_extract_from_assessment(assessment, source="output"))
-    elif isinstance(output_assessments, dict):
-        events.extend(_extract_from_assessment(output_assessments, source="output"))
+    elif isinstance(output_assessments, list):
+        for assessment in output_assessments:
+            events.extend(_extract_from_assessment(assessment, source="output"))
 
     return events
 

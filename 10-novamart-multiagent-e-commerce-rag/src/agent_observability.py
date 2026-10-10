@@ -777,7 +777,5 @@ def print_trace_hint() -> None:
         print("  Allow 30-60 seconds, then open the Service Map and select "
               "'Last 5 minutes':")
         print(f"  {service_map_url}")
-        print("  Submission step: take a screenshot showing the full "
-              "NovaMart-Orchestrator â†’ worker-agent call chain.")
     elif tracer.last_trace_id:
         print(f"\n  X-Ray trace {tracer.last_trace_id} was NOT published - see the warning above.")
